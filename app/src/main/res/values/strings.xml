@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">CellShark</string>
+    <string name="begin_recording">Begin Recording</string>
+    <string name="title">CellShark</string>
+    <string name="steo_one">Ensure all permissions were granted, It should have prompted upon loading up app</string>
+    <string name="step_two">Click start, the button will change to "STOP RECORDING"</string>
+    <string name="step_three">That\'s it! Let it run throughout it\'s entire usage</string>
+    <string name="start_recording">Begin Service</string>
+    <string name="stop_recording">Stop Service</string>
+    <string name="main_title">Network Logging Tool</string>
+    <string name="device_sn">Device Serial:</string>
+    <string name="dummy_sn_hint">RFK011072SA</string>
+    <string name="live_lte_metrics">Current LTE Values</string>
+    <string name="dl_enable">Enable Download Throughput Rate</string>
+    <string name="dl_hf_enable">Set frequency to 5 minutes</string>
+    <string name="dl_hf_override_enable">Override hours and days restriction</string>
+    <string name="stream_testing"><font size="16"><b>Stream Testing Mode</b></font>
+        \nMetrics will be logged every 5 second
+    </string>
+    <string name="ftp_connection"><font size="18"><b>FTP Connectivity Status</b></font></string>
+</resources>
