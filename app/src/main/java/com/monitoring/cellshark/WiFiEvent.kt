@@ -10,7 +10,7 @@ class WiFiEvent(connectionInfo: WifiInfo, scanResult: MutableList<ScanResult>, t
     private var neighborApList: MutableList<ScanResult> = mutableListOf()
     private var connectedSSID: String = connectionInfo.ssid.replace("\"", "")
     private var connectedBSSID: String = connectionInfo.bssid.replace("\"", "")
-    lateinit var csvLine: Array<String>
+    var csvLine: Array<String>
     private var ipAddress: String = Formatter.formatIpAddress(connectionInfo.ipAddress)
 
     init {
@@ -54,7 +54,7 @@ class WiFiEvent(connectionInfo: WifiInfo, scanResult: MutableList<ScanResult>, t
         }
 
         csvLine = tempLine.toTypedArray()
-        Log.d("WiFiEvent Details", "$tempLine")
+//        Log.d("WiFiEvent Details", "$tempLine")
 
     }
 

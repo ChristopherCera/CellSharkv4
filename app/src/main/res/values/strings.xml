@@ -1,6 +1,5 @@
 <resources>
     <string name="app_name">CellShark</string>
-    <string name="begin_recording">Begin Recording</string>
     <string name="title">CellShark</string>
     <string name="steo_one">Ensure all permissions were granted, It should have prompted upon loading up app</string>
     <string name="step_two">Click start, the button will change to "STOP RECORDING"</string>

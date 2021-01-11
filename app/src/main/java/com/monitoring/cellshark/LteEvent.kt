@@ -38,6 +38,7 @@ class LteEvent(cellInfo: CellInfoLte, rsrp: Int = 0, rsrq: Int = 0, earfcn: Int 
             in 66436..67335 -> cellBand = 66
         }
 
+
         csvLine = arrayOf(
             LTE, timestamp,
             cellInfo.cellSignalStrength.rsrp.toString(),

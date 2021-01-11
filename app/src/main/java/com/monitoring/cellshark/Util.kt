@@ -24,6 +24,7 @@ const val FTP_ADDRESS               = "cellshark.augmedix.com"
 const val FTP_PORT                  = 1161
 const val username                  = "cs"
 const val password                  = "btQ3Q3RPu9"
+const val SUPPLICANT                = "SupplicantState"
 const val WIFI                      = "WIFI"
 const val PING                      = "PING"
 const val PING_GATEWAY              = "Default_Gateway_Ping"
@@ -34,8 +35,9 @@ const val BATT_PERCENT              = "BATTERY_PERCENT"
 const val BATT_CHARGING_STATE       = "BATTERY_CHARGING_STATE"
 const val TIME_FORMAT_LOG           = "h:mm z"
 const val DATE_FORMAT_FILE          = "Mddkkmmss"
-const val DATE_FORMAT_LOG           = "Mdd"
-const val DATE_FORMAT_SINGLE_EVENT  = "MM/dd/yyyy'T'HH:mm:ss"
+const val DATE_FORMAT_LOG           = "M-dd"
+const val DATE_FORMAT_SINGLE_EVENT  = "MM/dd/yyyy'T'HH:mm:ss.SSS"
+const val TIME_FORMAT_MICRO         = "HH:mm:ss.SSS z"
 const val ACTIVITY_INTENT_KEY       = "runService"
 const val TRANSMITTED_BYTES         = "BytesTransmitted"
 const val RECEIVED_BYTES            = "BytesReceived"
@@ -44,7 +46,7 @@ const val LTE_CONNECTION_STATE      = "LteConnectionState"
 const val INTERFACE_STATE           = "InterfaceState"
 const val VERSION                   = "android_version"
 const val MAC                       = "device_mac_address"
-const val listLimit                 = 70
+
 const val AX_DOC_VERSION            = "AX_version"
 const val AX_PKG_NAME               = "com.augmedix.phone.prod"
 const val startWorkWeekDay     = Calendar.MONDAY
@@ -61,10 +63,8 @@ const val TEN_SECONDS: Int          = 10 //SECONDS
 // Global variable to keep UI elements accurate
 var csRunning = false
 
-
-
 object Util {
-
+    var listLimit                 = 70
     private var eventList: MutableList<Array<String>> = mutableListOf()
     private var secondaryEventList: MutableList<Array<String>> = mutableListOf()
 
@@ -84,7 +84,7 @@ object Util {
         *   If unable to access FTP server after 1 hour, stop attempting every 30 seconds.
         *   Reset each day or reboot
          */
-
+        Log.d("csDebug", "FTP Connection State: $FTP_SERVER_ACCESS \tFTP Failed Counts: $ftpCount")
         if (!result) {
             ftpCount++
             if (ftpCount >= 120) FTP_SERVER_ACCESS = false
@@ -243,29 +243,36 @@ object Util {
 
     fun deleteAllFiles() {
         try {
-            File(Util.dataDir).listFiles()?.forEach { it.delete() }
+            File(dataDir).listFiles()?.forEach { it.delete() }
         } catch (e: Exception) {
+            saveLogData("File Deletion Attempt Crashed--StackTrace\n${e.stackTraceToString()}")
             e.printStackTrace()
         }
     }
 
-    fun saveLogData(data: String, newEvent: Boolean = false) {
+    fun saveLogData(data: String) {
 
         //Get Date, Each file will be separated
-        val dateObj = SimpleDateFormat(DATE_FORMAT_LOG, Locale.getDefault())
+        var dateObj = SimpleDateFormat(DATE_FORMAT_LOG, Locale.getDefault())
         val dateStr = dateObj.format(Date())
-
+        dateObj = SimpleDateFormat(TIME_FORMAT_LOG, Locale.getDefault())
+        val timeStr = dateObj.format(Date())
         val fileName = "${getSerialNumber()}_$dateStr.txt"
 
         Log.i("CSInfo", "Creating File Object")
-        val fileDir = File(dataDir + File.separator + "logcat", fileName)
 
-        Log.i("CSInfo", "Checking if File Exists")
-        if(!fileDir.exists()) {
-            fileDir.mkdirs()
+        val newData = "Time: $timeStr\nLog Details\n-------------------------------\n$data\n"
+
+        try {
+            val path = File(parentDir + File.separator + "Logs").absolutePath
+            File(path, fileName).appendText("\n$newData")
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
 
-        fileDir.bufferedWriter().use { it.write(data) }
+
+
+
 
     }
 

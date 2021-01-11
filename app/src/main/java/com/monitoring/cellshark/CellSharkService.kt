@@ -32,6 +32,8 @@ class CellSharkService: Service() {
     private var counter = 0
     private val ftpThread = HandlerThread("ftpThread")
     private val loggingThread = HandlerThread("loggingThread")
+    private val supplicantStateReceiver = SupplicantReceiver()
+    private val mIntentFilter = IntentFilter()
 
     private var tm: TelephonyManager? = null
     private lateinit var ss: PhoneStateListener
@@ -43,8 +45,6 @@ class CellSharkService: Service() {
     private lateinit var loggingHandler: Handler
     private lateinit var loggingRunnable: Runnable
     private lateinit var uploadRunnable: Runnable
-    private var wpaState = mutableListOf<String>()
-    private var logCounter = 0
     private var fileQueue = arrayListOf<String>()
 
     override fun onCreate() {
@@ -66,21 +66,19 @@ class CellSharkService: Service() {
         val bm = applicationContext.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         tm?.listen(ss, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS)
 
-        val authWiFi =
-        val mIntentFilter = IntentFilter()
         mIntentFilter.addAction(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION)
-        applicationContext.registerReceiver()
+        applicationContext.registerReceiver(supplicantStateReceiver, mIntentFilter)
 
         ftpHandler = Handler(ftpThread.looper)
         loggingHandler = Handler(loggingThread.looper)
 
+        Util.saveLogData("test")
         loggingRunnable = object : Runnable {
             override fun run() {
 
-                checkWPAStatus(wm)
-
                 if (counter % 10 == 0) {
 
+//                    Util.saveLogData(counter.toString())
                     // We want the app to report which interface is being used for data every 10 seconds
                     val ci = getActiveConnectionInterface()
                     Util.addToEventList(arrayOf(INTERFACE_STATE, Util.getTimeStamp(), ci))
@@ -120,7 +118,6 @@ class CellSharkService: Service() {
             }
         }
 
-
         uploadRunnable = object : Runnable {
             override fun run() {
 
@@ -128,7 +125,8 @@ class CellSharkService: Service() {
 
                     val fileName = saveToFile()
                     fileQueue.add(fileName)
-                    mergeFileData(fileName)
+
+                    if( File(Util.dataDir).listFiles().size > 2 ) mergeFileData(fileName)
                     upload()
 
                 }
@@ -151,10 +149,7 @@ class CellSharkService: Service() {
         return START_STICKY
     }
 
-    private fun checkWPAStatus(wm: WifiManager) {
-        val state = wm.connectionInfo.supplicantState
-        Log.d("csDebug", "State: ${state.name}")
-    }
+
 
     fun getActiveConnectionInterface(): String {
 
@@ -187,14 +182,19 @@ class CellSharkService: Service() {
     }
 
     private fun upload() {
+        fileQueue.forEach{
+            Log.d("FileQueuePrint", it)
+        }
 
         val ftpClient = FTPSSLClient()
         val iterator = fileQueue.iterator()
+        val out = StringWriter()
 
         // Timeout at 10 seconds for connection attempt & 20 seconds for keepAlive
         ftpClient.connectTimeout = 10000
         ftpClient.controlKeepAliveTimeout = 20000
-        ftpClient.addProtocolCommandListener(PrintCommandListener(System.out))
+//        ftpClient.addProtocolCommandListener(PrintCommandListener(System.out))
+        ftpClient.addProtocolCommandListener(PrintCommandListener(PrintWriter(out), true))
 
         try {
             ftpClient.connect(FTP_ADDRESS, FTP_PORT)
@@ -203,25 +203,27 @@ class CellSharkService: Service() {
             ftpClient.execPROT("P")
             ftpClient.enterLocalPassiveMode()
             ftpClient.setFileType(FTP.BINARY_FILE_TYPE)
+
+            //Enabling here will ensure no thread crashes due to list manipulation
             Util.updateFTPConnection(true)
 
-            while(iterator.hasNext()) {
-                val fileName = iterator.next()
-                val filePath = File(Util.dataDir + File.separator + fileName)
-                if(!filePath.exists()) { continue }
-
-                try {
-                    val fileLocation = FileInputStream(filePath.absolutePath)
-                    val result = ftpClient.appendFile("/CellShark/Data/$fileName", fileLocation)
-                    Log.i("csDebug", "reply Code: ${ftpClient.replyCode}")
-                    if (result) {
-                        filePath.delete()
-                        iterator.remove()
-                    }
-                } catch (e: java.lang.Exception) {
-                    e.printStackTrace()
-                }
-            }
+//            while(iterator.hasNext()) {
+//                val fileName = iterator.next()
+//                val filePath = File(Util.dataDir + File.separator + fileName)
+//                if(!filePath.exists()) { continue }
+//
+//                try {
+//                    val fileLocation = FileInputStream(filePath.absolutePath)
+//                    val result = ftpClient.appendFile("/CellShark/Data/$fileName", fileLocation)
+//                    Log.i("csDebug", "reply Code: ${ftpClient.replyCode}")
+//                    if (result) {
+//                        filePath.delete()
+//                        iterator.remove()
+//                    }
+//                } catch (e: java.lang.Exception) {
+//                    e.printStackTrace()
+//                }
+//            }
 
             ftpClient.logout()
             ftpClient.disconnect()
@@ -229,6 +231,9 @@ class CellSharkService: Service() {
         } catch (e: Exception) {
             Util.updateFTPConnection(false)
             e.printStackTrace()
+            val logString = out.toString()
+            Util.saveLogData("FTP Connection Attempt Response Log\n$logString")
+            Util.saveLogData("FTP Crash Stack Trace\n${e.stackTraceToString()}")
         }
     }
 
@@ -246,11 +251,14 @@ class CellSharkService: Service() {
         val allFiles = File(Util.dataDir).listFiles()
 
         if(allFiles != null) {
-            if (allFiles.size > 3) {
+
                 allFiles.forEach { file ->
                     if(file.name != excludeFileName) {
                         val fileSize = Integer.parseInt((file.length()/1024).toString())
-                        if(totalSize >= 300) { return@forEach }
+                        if(totalSize >= 300) {
+                            fileQueue.add(file.name)
+                            return@forEach
+                        }
                         else if (fileSize < 300) {
                             totalSize += fileSize
                             val csvReader = CSVReader(FileReader(file))
@@ -258,7 +266,6 @@ class CellSharkService: Service() {
                             data.forEach {
                                 records.add(it)
                             }
-                            fileQueue.remove(file.name)
                             file.delete()
                         }
                     }
@@ -277,7 +284,7 @@ class CellSharkService: Service() {
 
                 csvWriter.close()
                 fileQueue.add(fileName)
-            }
+
         }
     }
 
@@ -317,8 +324,6 @@ class CellSharkService: Service() {
     @SuppressLint("MissingPermission")
     private fun processNetworkData(tm: TelephonyManager?, wm: WifiManager?) {
 
-        Log.d("csTest", "Processing Network Data")
-
         //LTE Data
         var registeredLTETower = false
         tm?.allCellInfo?.forEach { event ->
@@ -333,11 +338,8 @@ class CellSharkService: Service() {
             }
         }
 
-        if(registeredLTETower) {
-            Util.addToEventList(arrayOf(LTE_CONNECTION_STATE, Util.getTimeStamp(), "1"))
-        } else {
-            Util.addToEventList(arrayOf(LTE_CONNECTION_STATE, Util.getTimeStamp(), "0"))
-        }
+        if(registeredLTETower) Util.addToEventList(arrayOf(LTE_CONNECTION_STATE, Util.getTimeStamp(), "1"))
+        else Util.addToEventList(arrayOf(LTE_CONNECTION_STATE, Util.getTimeStamp(), "0"))
 
         //Wireless Data
         if (wm != null) {

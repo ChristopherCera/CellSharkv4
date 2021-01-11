@@ -60,18 +60,83 @@
             app:layout_constraintStart_toEndOf="@id/tv_serial"
             app:layout_constraintTop_toTopOf="@id/tv_serial"/>
 
+        <LinearLayout
+            android:id="@+id/deviceMac_Layout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:layout_constraintStart_toStartOf="@id/start_guideline"
+            app:layout_constraintTop_toBottomOf="@id/device_sn">
 
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textStyle="bold"
+                android:text="Device MAC Address: "/>
+
+            <TextView
+                android:id="@+id/deviceMac_Label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="N/A"/>
+
+        </LinearLayout>
 
         <TextView
             android:id="@+id/current_metrics_tv"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="300dp"
+            android:layout_marginTop="60dp"
             android:text="Live LTE Metrics"
-            android:textAlignment="center"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            app:layout_constraintTop_toBottomOf="@id/device_sn" />
+            android:textSize="22sp"
+            app:layout_constraintStart_toStartOf="@id/start_guideline"
+            app:layout_constraintTop_toBottomOf="@id/deviceMac_Layout" />
+
+
+
+        <LinearLayout
+            android:id="@+id/lteType_layout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:layout_constraintStart_toStartOf="@id/start_guideline"
+            app:layout_constraintTop_toBottomOf="@id/current_metrics_tv">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textStyle="bold"
+                android:text="LTE Data State: "/>
+
+            <TextView
+                android:id="@+id/dateState_Label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="N/A"/>
+
+        </LinearLayout>
+
+
+
+
+        <LinearLayout
+            android:id="@+id/lteSimState_Layout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:layout_constraintStart_toStartOf="@id/start_guideline"
+            app:layout_constraintTop_toBottomOf="@id/lteType_layout">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textStyle="bold"
+                android:text="SIM State: "/>
+
+            <TextView
+                android:id="@+id/simState_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="N/A"/>
+
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="0dp"
@@ -79,12 +144,10 @@
             android:layout_marginTop="8dp"
             android:background="@drawable/custom_border"
             android:orientation="horizontal"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="16dp"
             android:id="@+id/live_metrics_data"
             app:layout_constraintEnd_toEndOf="@id/end_guideline"
             app:layout_constraintStart_toStartOf="@id/start_guideline"
-            app:layout_constraintTop_toBottomOf="@id/current_metrics_tv">
+            app:layout_constraintTop_toBottomOf="@id/lteSimState_Layout">
 
             <LinearLayout
                 android:layout_width="wrap_content"
@@ -159,15 +222,174 @@
 
         </LinearLayout>
 
+        <TextView
+            android:id="@+id/LiveWiFiMetrics_TV"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Live WiFi Metrics"
+            android:textSize="22sp"
+            android:paddingTop="20dp"
+            android:layout_marginTop="10dp"
+            app:layout_constraintTop_toBottomOf="@id/live_metrics_data"
+            app:layout_constraintStart_toStartOf="@id/start_guideline"/>
+
+        <LinearLayout
+            android:id="@+id/connectedSSID_Layout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/LiveWiFiMetrics_TV"
+            app:layout_constraintStart_toStartOf="@id/start_guideline">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textStyle="bold"
+                android:text="Connected SSID: "/>
+
+            <TextView
+                android:id="@+id/connectedSSID_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="No SSID Connected"/>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/connectedBSSID_layout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/connectedSSID_Layout"
+            app:layout_constraintStart_toStartOf="@id/start_guideline">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textStyle="bold"
+                android:text="Connected BSSID: "/>
+
+            <TextView
+                android:id="@+id/connectedBSSID_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="No BSSID Available"/>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/ipAddress_layout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/connectedBSSID_layout"
+            app:layout_constraintStart_toStartOf="@id/start_guideline">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textStyle="bold"
+                android:text="Device IP: "/>
+
+            <TextView
+                android:id="@+id/deviceIP_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="N/A"/>
+
+        </LinearLayout>
+
+
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:background="@drawable/custom_border"
+            android:orientation="horizontal"
+            android:id="@+id/WiFiMetrics_LinearLayout"
+            app:layout_constraintEnd_toEndOf="@id/end_guideline"
+            app:layout_constraintStart_toStartOf="@id/start_guideline"
+            app:layout_constraintTop_toBottomOf="@id/ipAddress_layout">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="RSSI"
+                    android:textAlignment="center"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/rssiLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="N/A"
+                    android:textAlignment="center" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Link Rate"
+                    android:textAlignment="center"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/linkRateLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="N/A"
+                    android:textAlignment="center" />
+
+            </LinearLayout>
+
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Total # Neighbor APs"
+                    android:textAlignment="center"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/neighborAPNumLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="N/A"
+                    android:textAlignment="center" />
+
+            </LinearLayout>
+
+
+        </LinearLayout>
+
         <Button
             android:id="@+id/recording_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="40dp"
-            android:layout_marginBottom="26dp"
-            android:text="@string/begin_recording"
+            android:layout_marginTop="80dp"
+            android:text="@string/start_recording"
+            app:layout_constraintTop_toBottomOf="@id/WiFiMetrics_LinearLayout"
             app:layout_constraintEnd_toEndOf="@id/end_guideline"
-            app:layout_constraintTop_toBottomOf="@+id/live_metrics_data"
             app:layout_constraintStart_toStartOf="@id/start_guideline"
             app:layout_constraintBottom_toBottomOf="@id/bot_Guideline"/>
 

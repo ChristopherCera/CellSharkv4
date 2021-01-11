@@ -6,19 +6,20 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
-import android.os.Build
+import android.net.wifi.ScanResult
+import android.net.wifi.WifiManager
+import android.os.*
+import android.telephony.CellInfoLte
 import androidx.appcompat.app.AppCompatActivity
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.telephony.PhoneStateListener
-import android.telephony.SignalStrength
 import android.telephony.TelephonyManager
+import android.text.format.Formatter
 import android.util.Log
 import android.widget.Button
 import android.widget.TextView
 import androidx.lifecycle.ViewModelProvider
+import org.jetbrains.anko.doAsync
 import org.jetbrains.anko.sdk27.coroutines.onClick
+import org.w3c.dom.Text
 import java.io.File
 import java.lang.reflect.Method
 import java.util.*
@@ -51,15 +52,15 @@ class MainActivity : AppCompatActivity() {
     )
 
     private lateinit var telephonyManager: TelephonyManager
-    private lateinit var phoneStateListener: PhoneStateListener
-    private val handler = Handler(Looper.getMainLooper())
+    private lateinit var uiUpdateRunnable: Runnable
+    private val handler = Handler()
 
+    @SuppressLint("MissingPermission")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         createDirectories()
         createNotificationChannel()
-
 
         //create foreground service object
         val cellSharkService = Intent(this, CellSharkService::class.java)
@@ -75,8 +76,21 @@ class MainActivity : AppCompatActivity() {
                         minimizeApp()
                     }
                 }
+                "voidTimeRestriction" -> {
+                    //Remove time restrictions
+                }
+                "ChangeListLimit" -> {
+                    Util.listLimit += 50
+                    Log.d("IntentCSRunner", "Intent received, increasing limit.\nConfirmed, new list size: ${Util.listLimit}")
+                }
+                "ResetListLimit" -> {
+                    Util.listLimit = 70
+                }
             }
         }
+
+        //Model
+        val model = this.run { ViewModelProvider(this).get(LiveDataModel::class.java) }
 
         //Get Serial
         val textSn: TextView = findViewById(R.id.device_sn)
@@ -84,44 +98,152 @@ class MainActivity : AppCompatActivity() {
 
         //Get UI Elements
         val recordingButton: Button = findViewById(R.id.recording_button)
-
-        if(csRunning) {
-            recordingButton.text = getString(R.string.stop_recording)
-        }
-
-        //Create Model Object
-        val dataModel = ViewModelProvider(this).get(LiveDataModel::class.java)
+        val macLabel: TextView = findViewById(R.id.deviceMac_Label)
+        val lteStateLabel: TextView = findViewById(R.id.dateState_Label)
+        val lteSimState: TextView = findViewById(R.id.simState_label)
+        val ssidLabel: TextView = findViewById(R.id.connectedSSID_label)
+        val bssidLabel: TextView = findViewById(R.id.connectedBSSID_label)
+        val rssiLabel: TextView = findViewById(R.id.rssiLabel)
+        val linkRateLabel: TextView = findViewById(R.id.linkRateLabel)
+        val ipAddressLabel: TextView = findViewById(R.id.deviceIP_label)
+        val neighborApNumLabel: TextView = findViewById(R.id.neighborAPNumLabel)
+        val rsrpLabel: TextView = findViewById(R.id.rsrp_label)
+        val rsrqLabel: TextView = findViewById(R.id.rsrq_label)
+        val bandLabel: TextView = findViewById(R.id.band_lbl)
 
         //Telephony Object & Creating LTE Listener
         telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-        phoneStateListener = object: PhoneStateListener() {
-            override fun onSignalStrengthsChanged(signalStrength: SignalStrength?) {
-                //Add new data
-                super.onSignalStrengthsChanged(signalStrength)
+        val wm = getSystemService(Context.WIFI_SERVICE) as WifiManager
+
+        //Update Static Info
+        macLabel.text = Util.getWifiMacAddress()
+        lteSimState.text = getSimState(telephonyManager.simState)
+
+        model.getLteData().observe(this, {
+
+            lteStateLabel.text = getDataState(telephonyManager.dataState)
+            it.allCellInfo.forEach { event ->
+                when (event) {
+                    is CellInfoLte -> {
+                        if (event.isRegistered) {
+                            rsrpLabel.text = event.cellSignalStrength.rsrp.toString()
+                            rsrqLabel.text = event.cellSignalStrength.rsrq.toString()
+                            bandLabel.text = getCellBand(event.cellIdentity.earfcn)
+                        }
+                    }
+                }
+            }
+
+        })
+        model.getWiFiData().observe(this, {
+
+            ssidLabel.text = it.ssid
+            bssidLabel.text = it.bssid
+            rssiLabel.text = it.rssi.toString()
+            linkRateLabel.text = "${it.linkSpeed} Mbps"
+            ipAddressLabel.text = Formatter.formatIpAddress(it.ipAddress)
+
+            var count = 0
+
+            wm.scanResults.forEach {_it ->
+                if (_it.SSID == wm.connectionInfo.ssid && _it.BSSID != wm.connectionInfo.bssid) count++
+            }
+
+            neighborApNumLabel.text = count.toString()
+
+        })
+
+        uiUpdateRunnable = object : Runnable {
+            @SuppressLint("MissingPermission")
+            override fun run() {
+                model.addData(telephonyManager, wm)
+                handler.postDelayed(this, 3000)
             }
         }
 
         recordingButton.onClick {
-            if(csRunning) {
-                stopService(cellSharkService)
-                recordingButton.text = getString(R.string.start_recording)
-            }
-            else {
+            Log.d("buttonClicked", "csRunning: $csRunning \t${recordingButton.text}")
+            if(csRunning && recordingButton.text.toString() == "Begin Service") {
+                recordingButton.text = getString(R.string.stop_recording)
+                handler.post(uiUpdateRunnable)
+            } else if (!csRunning && recordingButton.text.toString() == "Begin Service") {
                 startForegroundService(cellSharkService)
                 recordingButton.text = getString(R.string.stop_recording)
-
+                handler.post(uiUpdateRunnable)
+            }
+            else {
+                stopService(cellSharkService)
+                recordingButton.text = getString(R.string.start_recording)
+                handler.removeCallbacks(uiUpdateRunnable)
             }
         }
 
 
+    }
 
+    private fun getDataState(value: Int): String {
+        return when(value) {
+            TelephonyManager.DATA_DISCONNECTED -> return "Disconnected"
+            TelephonyManager.DATA_DISCONNECTING -> return "Disconnected"
+            TelephonyManager.DATA_SUSPENDED -> return "Suspended"
+            TelephonyManager.DATA_UNKNOWN -> return "Unknown"
+            TelephonyManager.DATA_CONNECTING -> return "Connecting"
+            TelephonyManager.DATA_CONNECTED -> return "Connected"
+            else -> "N/A"
+        }
+
+
+    }
+
+    private fun getCellBand(value: Int): String {
+        return when (value) {
+            //in 0..599 -> cellBand = 1
+            in 600..1199 -> "2"
+            in 1950..2399 -> "4"
+            in 2400..2649 -> "5"
+            in 5180..5279 -> "13"
+            in 66436..67335 -> "66"
+            else -> "N/A"
+        }
+    }
+
+    private fun getSimState(value: Int): String {
+        when(value) {
+
+            TelephonyManager.SIM_STATE_ABSENT ->            { return "Absent" }
+            TelephonyManager.SIM_STATE_CARD_IO_ERROR ->     { return "IO Error" }
+            TelephonyManager.SIM_STATE_CARD_RESTRICTED ->   { return "Restricted" }
+            TelephonyManager.SIM_STATE_NETWORK_LOCKED ->    { return "Network Locked" }
+            TelephonyManager.SIM_STATE_NOT_READY ->         { return "Not Ready" }
+            TelephonyManager.SIM_STATE_PERM_DISABLED ->     { return "Permanently Disabled" }
+            TelephonyManager.SIM_STATE_PIN_REQUIRED ->      { return "PIN Required" }
+            TelephonyManager.SIM_STATE_PUK_REQUIRED ->      { return "PUK Required" }
+            TelephonyManager.SIM_STATE_READY ->             { return "Ready" }
+            TelephonyManager.SIM_STATE_UNKNOWN ->           { return "Unknown" }
+            else -> { return "N/A"}
+
+
+        }
+    }
+
+    private fun getWiFiStandard(value: Int): String {
+        when(value) {
+
+            ScanResult.WIFI_STANDARD_11AC ->    {   return "11AC" }
+            ScanResult.WIFI_STANDARD_11AX ->    {   return "11AX" }
+            ScanResult.WIFI_STANDARD_11N ->     {   return "11N" }
+            ScanResult.WIFI_STANDARD_LEGACY ->  {   return "LEGACY" }
+            ScanResult.WIFI_STANDARD_UNKNOWN -> {   return "UNKNOWN" }
+            else -> { return "N/A" }
+
+        }
     }
 
     private fun createDirectories() {
 
         val rootDir = getExternalFilesDir(null)!!
         File(rootDir.absolutePath + File.separator + "Data" ).mkdirs()
-        File(rootDir.absolutePath + File.separator + "logcat").mkdirs()
+        File(rootDir.absolutePath + File.separator + "Logs" ).mkdirs()
 
     }
 
@@ -157,6 +279,24 @@ class MainActivity : AppCompatActivity() {
         startMain.flags = Intent.FLAG_ACTIVITY_NEW_TASK
         startActivity(startMain)
 
+    }
+
+    override fun onResume() {
+        Log.d("uiUpdater", "onResume")
+        if(csRunning) handler.post(uiUpdateRunnable)
+        super.onResume()
+    }
+
+    override fun onPause() {
+//        Log.d("uiUpdater", "onPause")
+        handler.removeCallbacks(uiUpdateRunnable)
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+//        Log.d("uiUpdater", "onDestroy")
+        handler.removeCallbacks(uiUpdateRunnable)
+        super.onDestroy()
     }
 
     override fun onStart() {
