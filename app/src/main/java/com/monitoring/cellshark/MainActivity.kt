@@ -21,6 +21,7 @@ import org.jetbrains.anko.doAsync
 import org.jetbrains.anko.sdk27.coroutines.onClick
 import org.w3c.dom.Text
 import java.io.File
+import java.lang.Exception
 import java.lang.reflect.Method
 import java.util.*
 import kotlin.concurrent.schedule
@@ -58,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("MissingPermission")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Thread.setDefaultUncaughtExceptionHandler(CellSharkExceptionHandler(this))
         setContentView(R.layout.activity_main)
         createDirectories()
         createNotificationChannel()
@@ -163,6 +165,7 @@ class MainActivity : AppCompatActivity() {
 
         recordingButton.onClick {
             Log.d("buttonClicked", "csRunning: $csRunning \t${recordingButton.text}")
+
             if(csRunning && recordingButton.text.toString() == "Begin Service") {
                 recordingButton.text = getString(R.string.stop_recording)
                 handler.post(uiUpdateRunnable)

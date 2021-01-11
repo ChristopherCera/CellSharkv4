@@ -259,8 +259,6 @@ object Util {
         val timeStr = dateObj.format(Date())
         val fileName = "${getSerialNumber()}_$dateStr.txt"
 
-        Log.i("CSInfo", "Creating File Object")
-
         val newData = "Time: $timeStr\nLog Details\n-------------------------------\n$data\n"
 
         try {
