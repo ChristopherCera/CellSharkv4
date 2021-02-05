@@ -1,10 +1,13 @@
 package com.monitoring.cellshark
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.net.TrafficStats
+import android.net.wifi.WifiManager
 import java.text.SimpleDateFormat
 import java.util.*
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import org.jetbrains.anko.doAsync
 import java.io.*
@@ -17,22 +20,23 @@ val axEndPoints = arrayOf("connectivitycheck.android.com", "echo.augmedix.com",
     "www.google.com", "mcu4.augmedix.com")
 
 
-//New Upcoming Password -- btQ3Q3RPu9
+//New Variables
+const val PINGv2                      = "PINGv2"
+const val SystemBytes               = "SystemBytes"
+const val BatteryState              = "BatteryState"
+
+//Deprecating Soon
+const val BATT_PERCENT              = "BATTERY_PERCENT"
+const val BATT_CHARGING_STATE       = "BATTERY_CHARGING_STATE"
+const val PING                      = "PING"
 
 const val MINUTE: Int               = 60 //SECONDS
-const val FTP_ADDRESS               = "cellshark.augmedix.com"
-const val FTP_PORT                  = 1161
-const val username                  = "cs"
-const val password                  = "btQ3Q3RPu9"
 const val SUPPLICANT                = "SupplicantState"
 const val WIFI                      = "WIFI"
-const val PING                      = "PING"
 const val PING_GATEWAY              = "Default_Gateway_Ping"
 const val LTE                       = "LTEv2"
 const val SYSTEM                    = "SYSTEM"
 const val REBOOT_EVENT              = "REBOOT"
-const val BATT_PERCENT              = "BATTERY_PERCENT"
-const val BATT_CHARGING_STATE       = "BATTERY_CHARGING_STATE"
 const val TIME_FORMAT_LOG           = "h:mm z"
 const val DATE_FORMAT_FILE          = "Mddkkmmss"
 const val DATE_FORMAT_LOG           = "M-dd"
@@ -55,10 +59,15 @@ const val startWorkWeekHour         = 6
 const val endWorkWeekHour           = 20
 const val CHANNEL_ID                = "com.monitor.cellshark"
 
-//OLD VARIABLES
-const val DOWN_RATE                 = "DOWN_RATE"
-const val ONE_SECOND: Int           = 1
-const val TEN_SECONDS: Int          = 10 //SECONDS
+//FTP Variables
+const val FTP_ADDRESS               = "cellshark.augmedix.com"
+const val FTP_PORT                  = 1161
+const val username                  = "cs"
+const val password                  = "btQ3Q3RPu9"
+var FTP_Timeout                     = 15000
+var FTP_KeepAliveTimeout: Long      = 30000
+var FTP_isUploading                 = false
+
 
 // Global variable to keep UI elements accurate
 var csRunning = false
@@ -76,6 +85,7 @@ object Util {
 
     //File Variables
     private val parentDir = File("/storage/emulated/0/Android/data/com.monitoring.cellshark/files").absolutePath
+//    private val parentDir = File("/storage/emulated/0/Android/data/com.monitoring.cellguppie/files").absolutePath
     val dataDir: String = File(parentDir + File.separator + "Data").absolutePath
 
     fun updateFTPConnection(result: Boolean) {
@@ -205,7 +215,7 @@ object Util {
     }
 
     @SuppressLint("MissingPermission", "PrivateApi", "HardwareIds")
-    fun getSerialNumber(): String? {
+    fun getSerialNumber(context: Context): String? {
         var serialNumber: String?
 
         try {
@@ -238,6 +248,8 @@ object Util {
             }
         }
 
+        if (serialNumber == "unknown") { serialNumber = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) }
+
         return serialNumber
     }
 
@@ -257,7 +269,7 @@ object Util {
         val dateStr = dateObj.format(Date())
         dateObj = SimpleDateFormat(TIME_FORMAT_LOG, Locale.getDefault())
         val timeStr = dateObj.format(Date())
-        val fileName = "${getSerialNumber()}_$dateStr.txt"
+        val fileName = "$dateStr.txt"
 
         val newData = "Time: $timeStr\nLog Details\n-------------------------------\n$data\n"
 
@@ -268,10 +280,13 @@ object Util {
             e.printStackTrace()
         }
 
+    }
 
-
-
-
+    fun isWiFiConnected(wm: WifiManager): Boolean {
+        if(wm.connectionInfo.bssid != null && wm.connectionInfo.bssid != "02:00:00:00:00") {
+            if(wm.connectionInfo.rssi > -100 && wm.connectionInfo.linkSpeed > 0) return true
+        }
+        return false
     }
 
 }

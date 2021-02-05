@@ -3,6 +3,7 @@ package com.monitoring.cellshark
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.net.NetworkInfo
 import android.net.wifi.SupplicantState
 import android.net.wifi.WifiManager
 import android.util.Log
@@ -22,6 +23,12 @@ class SupplicantReceiver: BroadcastReceiver() {
 
         if (action != null) {
             val state = intent.getParcelableExtra<SupplicantState>(WifiManager.EXTRA_NEW_STATE)
+            val networkState = intent.getParcelableExtra<NetworkInfo>(WifiManager.EXTRA_NETWORK_INFO)
+
+//            Log.d("CellShark_Supplicant_Event", "Network State: $networkState")
+//            Log.d("CellShark_Supplicant_Event", "Supplicant State: $state")
+//            Util.saveLogData(networkState.toString())
+
             if (state != null) {
 
                 if(noWiFiInfo(state)) {
@@ -29,11 +36,12 @@ class SupplicantReceiver: BroadcastReceiver() {
                 }
 
                 else if ( context != null ) {
-
-                            val wm = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
-                            val wmInfo = wm.connectionInfo
-                            Util.addToEventList(WiFiEvent(wm.connectionInfo, wm.scanResults, timestamp).csvLine)
-                            Util.addToEventList(arrayOf(SUPPLICANT, timestamp, state.toString(), wmInfo.ssid, wmInfo.bssid))
+                    val wm = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                    val wmInfo = wm.connectionInfo
+                    if (wmInfo.bssid == null) { Util.addToEventList(arrayOf(SUPPLICANT, timestamp, state.toString(), " _ ", " _ " )) } else {
+                        Util.addToEventList(WiFiEvent(wm.connectionInfo, wm.scanResults, timestamp).csvLine)
+                        Util.addToEventList(arrayOf(SUPPLICANT, timestamp, state.toString(), wmInfo.ssid, wmInfo.bssid))
+                    }
                 }
             }
         }

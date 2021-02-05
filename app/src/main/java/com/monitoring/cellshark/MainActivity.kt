@@ -9,6 +9,7 @@ import android.content.Intent
 import android.net.wifi.ScanResult
 import android.net.wifi.WifiManager
 import android.os.*
+import android.provider.Settings
 import android.telephony.CellInfoLte
 import androidx.appcompat.app.AppCompatActivity
 import android.telephony.TelephonyManager
@@ -54,9 +55,10 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var telephonyManager: TelephonyManager
     private lateinit var uiUpdateRunnable: Runnable
+//    private val cellSharkService = Intent(this, CellSharkService::class.java)
     private val handler = Handler()
 
-    @SuppressLint("MissingPermission")
+    @SuppressLint("MissingPermission", "HardwareIds")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Thread.setDefaultUncaughtExceptionHandler(CellSharkExceptionHandler(this))
@@ -64,7 +66,6 @@ class MainActivity : AppCompatActivity() {
         createDirectories()
         createNotificationChannel()
 
-        //create foreground service object
         val cellSharkService = Intent(this, CellSharkService::class.java)
 
         //Handle any Intents Here
@@ -84,9 +85,38 @@ class MainActivity : AppCompatActivity() {
                 "ChangeListLimit" -> {
                     Util.listLimit += 50
                     Log.d("IntentCSRunner", "Intent received, increasing limit.\nConfirmed, new list size: ${Util.listLimit}")
+                    Timer("intentGoBackTimer", false).schedule(2500) {
+                        minimizeApp()
+                    }
                 }
                 "ResetListLimit" -> {
                     Util.listLimit = 70
+                    Timer("intentGoBackTimer", false).schedule(2500) {
+                        minimizeApp()
+                    }
+                }
+                "TurnOff" -> {
+                    stopService(cellSharkService)
+                    Timer("intentGoBackTimer", false).schedule(2500) {
+                        minimizeApp()
+                    }
+                }
+                "RemoveFTPTimeouts" -> {
+                    FTP_Timeout = 60000
+                    FTP_KeepAliveTimeout = 0
+                    Timer("intentGoBackTimer", false).schedule(2500) {
+                        minimizeApp()
+                    }
+                }
+                "ResetFTPTimeouts" -> {
+                    FTP_Timeout = 10000
+                    FTP_KeepAliveTimeout = 20000
+                    Timer("intentGoBackTimer", false).schedule(2500) {
+                        minimizeApp()
+                    }
+                }
+                else -> {
+                    minimizeApp()
                 }
             }
         }
@@ -96,7 +126,7 @@ class MainActivity : AppCompatActivity() {
 
         //Get Serial
         val textSn: TextView = findViewById(R.id.device_sn)
-        textSn.text = Util.getSerialNumber()
+        textSn.text = Util.getSerialNumber(applicationContext)
 
         //Get UI Elements
         val recordingButton: Button = findViewById(R.id.recording_button)
@@ -158,13 +188,14 @@ class MainActivity : AppCompatActivity() {
         uiUpdateRunnable = object : Runnable {
             @SuppressLint("MissingPermission")
             override fun run() {
+//                Log.d("Cellshark", "Is TM Null? ${telephonyManager.allCellInfo == null}")
                 model.addData(telephonyManager, wm)
                 handler.postDelayed(this, 3000)
             }
         }
 
         recordingButton.onClick {
-            Log.d("buttonClicked", "csRunning: $csRunning \t${recordingButton.text}")
+//            Log.d("buttonClicked", "csRunning: $csRunning \t${recordingButton.text}")
 
             if(csRunning && recordingButton.text.toString() == "Begin Service") {
                 recordingButton.text = getString(R.string.stop_recording)
@@ -180,8 +211,6 @@ class MainActivity : AppCompatActivity() {
                 handler.removeCallbacks(uiUpdateRunnable)
             }
         }
-
-
     }
 
     private fun getDataState(value: Int): String {
@@ -299,11 +328,12 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
 //        Log.d("uiUpdater", "onDestroy")
         handler.removeCallbacks(uiUpdateRunnable)
+//        stopService(cellSharkService)
         super.onDestroy()
     }
 
     override fun onStart() {
-
+        Log.d("CellShark", "Buiild Version: ${Build.VERSION.SDK_INT}")
         when (Build.VERSION.SDK_INT) {
             Build.VERSION_CODES.Q -> {
                 enableSSL()

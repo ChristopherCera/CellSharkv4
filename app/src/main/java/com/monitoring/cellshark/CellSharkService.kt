@@ -67,13 +67,13 @@ class CellSharkService: Service() {
         tm?.listen(ss, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS)
 
         mIntentFilter.addAction(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION)
+        mIntentFilter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
         applicationContext.registerReceiver(supplicantStateReceiver, mIntentFilter)
 
         ftpHandler = Handler(ftpThread.looper)
         loggingHandler = Handler(loggingThread.looper)
 
-        Util.saveLogData("test")
-        loggingRunnable = object : Runnable {
+        object : Runnable {
             override fun run() {
 
                 if (counter % 10 == 0) {
@@ -83,7 +83,7 @@ class CellSharkService: Service() {
                     val ci = getActiveConnectionInterface()
                     Util.addToEventList(arrayOf(INTERFACE_STATE, Util.getTimeStamp(), ci))
                     Util.saveTrafficStats()
-
+                    Log.d("CellShark_DeBug", "${hasDataConnection(tm, wm)}")
                     if (hasDataConnection(tm, wm)) {
                         processNetworkData(tm, wm)
                         axEndPoints.forEach {
@@ -116,7 +116,7 @@ class CellSharkService: Service() {
                 counter++
                 loggingHandler.postDelayed(this, 1000)
             }
-        }
+        }.also { loggingRunnable = it }
 
         uploadRunnable = object : Runnable {
             override fun run() {
@@ -124,10 +124,13 @@ class CellSharkService: Service() {
                 GlobalScope.launch(IO) {
 
                     val fileName = saveToFile()
-                    fileQueue.add(fileName)
-
-                    if( File(Util.dataDir).listFiles().size > 2 ) mergeFileData(fileName)
-                    upload()
+                    Log.d("Cellshark", "is Ftp Uloading? $FTP_isUploading")
+                    if (!FTP_isUploading) {
+                        val size = File(Util.dataDir).listFiles()!!.size
+                        if (size > 1 ) mergeFileData(fileName)
+                        else fileQueue.add(fileName)
+                        if (Util.FTP_SERVER_ACCESS) upload()
+                    }
 
                 }
 //                Log.d("FTPRunnable,", "Upload Ping")
@@ -146,7 +149,7 @@ class CellSharkService: Service() {
             .setContentText("Augmedix Support Tool Running").build()
 
         startForeground(101, notification)
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
 
@@ -178,23 +181,32 @@ class CellSharkService: Service() {
 
         return if(isWifiConnected(wm) && dataActivity == TelephonyManager.DATA_ACTIVITY_NONE) {
             "WiFi"
-        } else { "LTE" }
+        }
+        else if (tm.isDataEnabled) { "LTE" }
+        else { "Offline" }
     }
 
     private fun upload() {
+        FTP_isUploading = true
+
         fileQueue.forEach{
             Log.d("FileQueuePrint", it)
         }
 
+//        val tempFileQueue = fileQueue
+//        tempFileQueue.forEach {
+//            Log.d("FileQueuePrint", "v2 $it" )
+//        }
+
         val ftpClient = FTPSSLClient()
-        val iterator = fileQueue.iterator()
         val out = StringWriter()
+        var success = mutableListOf<String>()
 
         // Timeout at 10 seconds for connection attempt & 20 seconds for keepAlive
-        ftpClient.connectTimeout = 10000
-        ftpClient.controlKeepAliveTimeout = 20000
-//        ftpClient.addProtocolCommandListener(PrintCommandListener(System.out))
+        ftpClient.connectTimeout = FTP_Timeout
+        ftpClient.controlKeepAliveTimeout = FTP_KeepAliveTimeout
         ftpClient.addProtocolCommandListener(PrintCommandListener(PrintWriter(out), true))
+        ftpClient.addProtocolCommandListener(PrintCommandListener(System.out))
 
         try {
             ftpClient.connect(FTP_ADDRESS, FTP_PORT)
@@ -207,34 +219,39 @@ class CellSharkService: Service() {
             //Enabling here will ensure no thread crashes due to list manipulation
             Util.updateFTPConnection(true)
 
-//            while(iterator.hasNext()) {
-//                val fileName = iterator.next()
-//                val filePath = File(Util.dataDir + File.separator + fileName)
-//                if(!filePath.exists()) { continue }
-//
-//                try {
-//                    val fileLocation = FileInputStream(filePath.absolutePath)
-//                    val result = ftpClient.appendFile("/CellShark/Data/$fileName", fileLocation)
-//                    Log.i("csDebug", "reply Code: ${ftpClient.replyCode}")
-//                    if (result) {
-//                        filePath.delete()
-//                        iterator.remove()
-//                    }
-//                } catch (e: java.lang.Exception) {
-//                    e.printStackTrace()
-//                }
-//            }
+            fileQueue.forEach { fileName ->
+
+                val filePath = File(Util.dataDir + File.separator + fileName)
+                if(!filePath.exists()) { return@forEach }
+
+                try {
+                    val fileLocation = FileInputStream(filePath.absolutePath)
+                    val result = ftpClient.appendFile("/CellShark/Data/$fileName", fileLocation)
+                    Log.i("csDebug", "reply Code: ${ftpClient.replyCode}")
+//                    if (result) { success.add(fileName) }
+                    if (result) { filePath.delete() }
+                } catch (e: java.lang.Exception) {
+                    e.printStackTrace()
+                    Log.d("FTP_CellShark", "Crashed Here v1")
+                }
+            }
+
 
             ftpClient.logout()
             ftpClient.disconnect()
 
         } catch (e: Exception) {
+            Log.d("FTP_CellShark", "Crashed Here v3")
             Util.updateFTPConnection(false)
             e.printStackTrace()
             val logString = out.toString()
             Util.saveLogData("FTP Connection Attempt Response Log\n$logString")
             Util.saveLogData("FTP Crash Stack Trace\n${e.stackTraceToString()}")
+        } finally {
+            fileQueue.clear()
         }
+
+        FTP_isUploading = false
     }
 
     private fun mergeFileData(excludeFileName: String) {
@@ -243,54 +260,69 @@ class CellSharkService: Service() {
          * Function will merge previous files into one, to reduce the # of connection attempts to the
          * FTP Server.
          * Limitations -- No more than 300kb per file combined
-         * Upcoming Feature --> Remove data that's behind 7 days
+         * To reduce a high number of file append requests, I'm reducing total # of files on device to 50.
+         *
          */
 
         val records: MutableList<Array<String>> = mutableListOf()
         var totalSize = 0
         val allFiles = File(Util.dataDir).listFiles()
+        val files: MutableList<File>
+        fileQueue.add(excludeFileName)
+
+        val fileLimit = 10
 
         if(allFiles != null) {
 
-                allFiles.forEach { file ->
-                    if(file.name != excludeFileName) {
-                        val fileSize = Integer.parseInt((file.length()/1024).toString())
-                        if(totalSize >= 300) {
-                            fileQueue.add(file.name)
-                            return@forEach
+            allFiles.sort()
+            allFiles.reverse()
+
+            files = if (allFiles.size > fileLimit) {
+                val temp = allFiles.toMutableList()
+                temp.subList(fileLimit, temp.size).clear()
+                allFiles.forEach { file -> if (!temp.contains(file)) file.delete() }
+                temp
+            } else allFiles.toMutableList()
+
+            files.forEach { file ->
+                if(file.name != excludeFileName) {
+                    val fileSize = Integer.parseInt((file.length()/1024).toString())
+                    if(totalSize >= 300) {
+                        fileQueue.add(file.name)
+                        return@forEach
+                    }
+                    else if (fileSize < 300) {
+                        totalSize += fileSize
+                        val csvReader = CSVReader(FileReader(file))
+                        val data = csvReader.readAll()
+                        data.forEach {
+                            records.add(it)
                         }
-                        else if (fileSize < 300) {
-                            totalSize += fileSize
-                            val csvReader = CSVReader(FileReader(file))
-                            val data = csvReader.readAll()
-                            data.forEach {
-                                records.add(it)
-                            }
-                            file.delete()
-                        }
+                        file.delete()
                     }
                 }
+            }
 
-                val fileName = "${Util.getSerialNumber()}_" +
-                        SimpleDateFormat(DATE_FORMAT_FILE, Locale.getDefault()).format(Date()) + "_merged.csv"
-                val filePath = File(Util.dataDir + File.separator + fileName)
+            val fileName = "${Util.getSerialNumber(applicationContext)}_" +
+                    SimpleDateFormat(DATE_FORMAT_FILE, Locale.getDefault()).format(Date()) + "_merged.csv"
+            val filePath = File(Util.dataDir + File.separator + fileName)
 
-                val mFileWriter = FileWriter(filePath, false)
-                val csvWriter = CSVWriter(mFileWriter)
+            val mFileWriter = FileWriter(filePath, false)
+            val csvWriter = CSVWriter(mFileWriter)
 
-                records.forEach {
-                    csvWriter.writeNext(it)
-                }
+            records.forEach {
+                csvWriter.writeNext(it)
+            }
 
-                csvWriter.close()
-                fileQueue.add(fileName)
+            csvWriter.close()
+            fileQueue.add(fileName)
 
         }
     }
 
     private  fun saveToFile(): String {
 
-        val fileName = "${Util.getSerialNumber()}_" +
+        val fileName = "${Util.getSerialNumber(applicationContext)}_" +
                 SimpleDateFormat(DATE_FORMAT_FILE, Locale.getDefault()).format(Date()) + ".csv"
         val filePath = File(Util.dataDir + File.separator + fileName)
 
@@ -311,7 +343,7 @@ class CellSharkService: Service() {
         return fileName
     }
 
-    private fun logDocAppVersion() {
+     private fun logDocAppVersion() {
         val pm = packageManager
         val installedApps = pm.getInstalledPackages(PackageManager.GET_META_DATA)
         installedApps.forEach { app ->
@@ -343,7 +375,7 @@ class CellSharkService: Service() {
 
         //Wireless Data
         if (wm != null) {
-            if(wm.connectionInfo.bssid != null && wm.connectionInfo.bssid != "02:00:00:00:00" && wm.connectionInfo.rssi > -100) {
+            if(Util.isWiFiConnected(wm)) {
                 val wifiEvent = WiFiEvent(wm.connectionInfo, wm.scanResults, Util.getTimeStamp())
                 Util.addToEventList(wifiEvent.csvLine)
                 val dhcpInfo = wm.dhcpInfo
@@ -360,31 +392,51 @@ class CellSharkService: Service() {
         } else {
             Util.addToEventList(arrayOf(WIFI_CONNECTION_STATE, Util.getTimeStamp(), "0"))
         }
+    }
 
+    private fun newPing(address: String, isDefaultGateway: Boolean): PingInfo {
+        val dgPingInfo: PingInfo
+        if(isDefaultGateway) alternatePing(address)
+        else {
+            val result: Boolean
+            val start = System.currentTimeMillis()
+            try {
+                val inetAddress = InetAddress.getByName(address)
+                result = inetAddress.isReachable(500)
+            } catch (e: Exception) {
+                throw Exception("Ping Failed: ${e.printStackTrace()}")
+            }
+
+            val end = System.currentTimeMillis()
+            val time = (end-start).toInt()
+
+            return PingInfo(address, time.toString(), result)
+        }
+
+        return PingInfo("test", "100", false)
     }
 
     private fun ping(address: String, isDefaultGateway: Boolean = false) {
         val result: Boolean
         //start time
         val timestamp = Util.getTimeStamp()
-        val start = System.currentTimeMillis()
 
-        try {
-            val inetAddress = InetAddress.getByName(address)
-            result = inetAddress.isReachable(500)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return
-        }
+        if(isDefaultGateway) alternatePing(address)
+        else {
 
-        val end = System.currentTimeMillis()
-        val diff = (end-start).toInt()
-        if(isDefaultGateway) {
-            if(diff > 700){
-                alternatePing(address)
-            } else { Util.addToEventList(arrayOf(PING_GATEWAY, timestamp, address, result.toString(), diff.toString())) }
+            val start = System.currentTimeMillis()
 
-        } else {
+            try {
+                val inetAddress = InetAddress.getByName(address)
+                result = inetAddress.isReachable(500)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                return
+            }
+
+            val end = System.currentTimeMillis()
+            var diff = (end-start).toInt()
+            if(!result) { diff = 0 }
             Util.addToEventList(arrayOf(PING, timestamp, address, result.toString(), diff.toString()))
         }
 

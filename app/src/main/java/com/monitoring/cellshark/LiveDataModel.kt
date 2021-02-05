@@ -21,7 +21,7 @@ class LiveDataModel : ViewModel() {
     @SuppressLint("MissingPermission")
     fun addData(tm: TelephonyManager, wm: WifiManager) {
 
-        cellData.value = tm
+        if (tm.allCellInfo != null) cellData.value = tm
         wifiData.value = wm.connectionInfo
 
 

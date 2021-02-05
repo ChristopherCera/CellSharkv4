@@ -16,8 +16,8 @@ class WiFiEvent(connectionInfo: WifiInfo, scanResult: MutableList<ScanResult>, t
     init {
 
         val connectedChannel: Int = getChannel(connectionInfo.frequency)
-        val signalStrength = connectionInfo.rssi
-        val linkSpeed: Int = connectionInfo.linkSpeed
+        val signalStrength = if (connectionInfo.rssi > -90) connectionInfo.rssi else 0
+        val linkSpeed: Int = if (connectionInfo.linkSpeed >= 0 ) connectionInfo.linkSpeed else 0
 
         // "WIFI", datetime, device_ip, ssid, bssid, signal_strength, linkspeed, connected_channel
 
