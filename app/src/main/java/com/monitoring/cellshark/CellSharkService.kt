@@ -10,6 +10,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.os.*
+import android.provider.Settings
 import android.telephony.CellInfoLte
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
@@ -83,12 +84,21 @@ class CellSharkService: Service() {
                     val ci = getActiveConnectionInterface()
                     Util.addToEventList(arrayOf(INTERFACE_STATE, Util.getTimeStamp(), ci))
                     Util.saveTrafficStats()
-                    Log.d("CellShark_DeBug", "${hasDataConnection(tm, wm)}")
+                    Log.d("I/CellShark", "Is an active interface ON? ${hasDataConnection(tm, wm)}")
                     if (hasDataConnection(tm, wm)) {
                         processNetworkData(tm, wm)
-                        axEndPoints.forEach {
-                            GlobalScope.launch(IO) { ping(it) }
+                        val defaultGateway = Util.formatIP(wm.dhcpInfo.gateway)
+                        val result = mutableListOf<PingInfo>()
+
+                        GlobalScope.launch(IO) {
+                            axEndPoints.forEach { address ->
+                                result.add(newPing(address))
+                            }
+                            if (defaultGateway != "0.0.0.0") result.add(dgPing(defaultGateway))
+                            Log.d("CsDebugging", "result size: ${result.size}")
+                            if(result.size > 0 )addPingData(result)
                         }
+
                     }
                 }
 
@@ -102,14 +112,9 @@ class CellSharkService: Service() {
                     Util.updateFTPConnection(true)
                     logDocAppVersion()
                     val buildNum = Build.VERSION.SDK_INT
-                    Util.addToEventList(
-                            arrayOf(SYSTEM, Util.getTimeStamp(), VERSION,
-                                    buildNum.toString())
-                    )
                     val mac = Util.getWifiMacAddress()
-                    Util.addToEventList(
-                            arrayOf(SYSTEM, Util.getTimeStamp(), MAC, mac)
-                    )
+                    val newAr = arrayOf(SystemMac, Util.getTimeStamp(), buildNum.toString(), mac)
+                    Util.addToEventList(newAr)
                     counter = 0
                 }
 
@@ -152,7 +157,33 @@ class CellSharkService: Service() {
         return START_NOT_STICKY
     }
 
+    private fun addPingData(data: MutableList<PingInfo>) {
 
+        val newAr: Array<String>
+        val temp: MutableList<String> = mutableListOf(PINGv2, Util.getTimeStamp() )
+
+        // Index
+        // 0 - PINGv2
+        // 1 - Timestamp
+        // 2-> End {2 address, 3 duration, 4 result}
+        // 6-> End {5 address, 6 duration, 7 result}
+
+        for (index in 0..4) {
+            if (data.getOrNull(index) != null) {
+                temp.add(data[index].adress)
+                temp.add(data[index].duration)
+                temp.add(data[index].result.toString())
+            } else {
+                temp.add("None")
+                temp.add("None")
+                temp.add("None")
+            }
+        }
+
+        newAr = temp.toTypedArray()
+
+        Util.addToEventList(newAr)
+    }
 
     fun getActiveConnectionInterface(): String {
 
@@ -188,7 +219,8 @@ class CellSharkService: Service() {
 
     private fun upload() {
         FTP_isUploading = true
-
+        val uploadFileLimit = 5
+        val count = 0
         fileQueue.forEach{
             Log.d("FileQueuePrint", it)
         }
@@ -200,13 +232,12 @@ class CellSharkService: Service() {
 
         val ftpClient = FTPSSLClient()
         val out = StringWriter()
-        var success = mutableListOf<String>()
 
         // Timeout at 10 seconds for connection attempt & 20 seconds for keepAlive
         ftpClient.connectTimeout = FTP_Timeout
         ftpClient.controlKeepAliveTimeout = FTP_KeepAliveTimeout
         ftpClient.addProtocolCommandListener(PrintCommandListener(PrintWriter(out), true))
-        ftpClient.addProtocolCommandListener(PrintCommandListener(System.out))
+//        ftpClient.addProtocolCommandListener(PrintCommandListener(System.out))
 
         try {
             ftpClient.connect(FTP_ADDRESS, FTP_PORT)
@@ -219,7 +250,7 @@ class CellSharkService: Service() {
             //Enabling here will ensure no thread crashes due to list manipulation
             Util.updateFTPConnection(true)
 
-            fileQueue.forEach { fileName ->
+            fileQueue.take(4).forEach { fileName ->
 
                 val filePath = File(Util.dataDir + File.separator + fileName)
                 if(!filePath.exists()) { return@forEach }
@@ -228,12 +259,12 @@ class CellSharkService: Service() {
                     val fileLocation = FileInputStream(filePath.absolutePath)
                     val result = ftpClient.appendFile("/CellShark/Data/$fileName", fileLocation)
                     Log.i("csDebug", "reply Code: ${ftpClient.replyCode}")
-//                    if (result) { success.add(fileName) }
                     if (result) { filePath.delete() }
                 } catch (e: java.lang.Exception) {
                     e.printStackTrace()
                     Log.d("FTP_CellShark", "Crashed Here v1")
                 }
+
             }
 
 
@@ -378,14 +409,6 @@ class CellSharkService: Service() {
             if(Util.isWiFiConnected(wm)) {
                 val wifiEvent = WiFiEvent(wm.connectionInfo, wm.scanResults, Util.getTimeStamp())
                 Util.addToEventList(wifiEvent.csvLine)
-                val dhcpInfo = wm.dhcpInfo
-                val defaultGateway = Util.formatIP(dhcpInfo.gateway)
-                if (defaultGateway != "0.0.0.0") {
-                    GlobalScope.launch(Dispatchers.IO) {
-                        Log.d("csDebug", "Running Default Gateway Ping")
-                        ping(defaultGateway, true)
-                    }
-                }
             } else {
                 Util.addToEventList(arrayOf(WIFI_CONNECTION_STATE, Util.getTimeStamp(), "0"))
             }
@@ -394,27 +417,66 @@ class CellSharkService: Service() {
         }
     }
 
-    private fun newPing(address: String, isDefaultGateway: Boolean): PingInfo {
-        val dgPingInfo: PingInfo
-        if(isDefaultGateway) alternatePing(address)
-        else {
-            val result: Boolean
-            val start = System.currentTimeMillis()
-            try {
-                val inetAddress = InetAddress.getByName(address)
-                result = inetAddress.isReachable(500)
-            } catch (e: Exception) {
-                throw Exception("Ping Failed: ${e.printStackTrace()}")
-            }
+    private fun newPing(address: String): PingInfo {
 
-            val end = System.currentTimeMillis()
-            val time = (end-start).toInt()
-
-            return PingInfo(address, time.toString(), result)
+        val name = when(address) {
+            axEndPoints[0] -> "CC"
+            axEndPoints[1] -> "echo"
+            axEndPoints[2] -> "goog"
+            axEndPoints[3] -> "mcu4"
+            else -> address
         }
 
-        return PingInfo("test", "100", false)
+        Log.d("CsDebugging", "newPing() -- Running")
+
+
+        val result: Boolean
+        val start = System.currentTimeMillis()
+        try {
+            val inetAddress = InetAddress.getByName(address)
+            result = inetAddress.isReachable(500)
+        } catch (e: Exception) {
+            return PingInfo(name, "0", false)
+        }
+
+        val end = System.currentTimeMillis()
+        val time = if (result) { (end-start).toInt() } else { 0 }
+
+//        Log.d("CsDebugging", "newPing() -- Running")
+        return PingInfo(name, time.toString(), result)
     }
+
+    private fun dgPing(address: String): PingInfo {
+
+        val runtime = Runtime.getRuntime()
+        var time: String = "0"
+        var result: Boolean = false
+
+        try {
+
+            val runCommand = runtime.exec("/system/bin/ping -c 1 $address")
+            val exitValue = runCommand.waitFor()
+            val stdInput = BufferedReader(InputStreamReader(runCommand.inputStream))
+
+            //Exit Value 0: Success
+            //Exit Value != 0: Failed
+
+            if(exitValue == 0) {
+                var count = 0
+                result = true
+                stdInput.forEachLine { inputLine ->
+                    if(count == 1) { time = Util.getPingTime(inputLine).toString() }
+                    count++
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        return PingInfo("dg", time, result)
+
+    }
+
 
     private fun ping(address: String, isDefaultGateway: Boolean = false) {
         val result: Boolean
@@ -437,7 +499,6 @@ class CellSharkService: Service() {
             val end = System.currentTimeMillis()
             var diff = (end-start).toInt()
             if(!result) { diff = 0 }
-            Util.addToEventList(arrayOf(PING, timestamp, address, result.toString(), diff.toString()))
         }
 
     }
@@ -490,27 +551,10 @@ class CellSharkService: Service() {
     private fun logBatteryInfo(bm: BatteryManager){
         //Battery Percent
         try {
-            Util.addToEventList(
-                arrayOf(
-                    SYSTEM,
-                    Util.getTimeStamp(),
-                    BATT_PERCENT,
-                    bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).toString()
-                )
-            )
-            //Battery Charging/Plugged In
-            if (isPowerPluggedIn(applicationContext)) {
-                Util.addToEventList(
-                    arrayOf(
-                        SYSTEM,
-                        Util.getTimeStamp(),
-                        BATT_CHARGING_STATE,
-                        "100"
-                    )
-                )
-            } else {
-                Util.addToEventList(arrayOf(SYSTEM, Util.getTimeStamp(), BATT_CHARGING_STATE, "0"))
-            }
+            val batteryCapacity = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).toString()
+            val batteryChargingState = if(isPowerPluggedIn(applicationContext))  "100" else "0"
+            val newAr = arrayOf(BatteryState, Util.getTimeStamp(), batteryCapacity, batteryChargingState)
+            Util.addToEventList(newAr)
         } catch (e: Exception) {
             e.printStackTrace()
         }

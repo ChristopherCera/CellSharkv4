@@ -21,14 +21,17 @@ val axEndPoints = arrayOf("connectivitycheck.android.com", "echo.augmedix.com",
 
 
 //New Variables
-const val PINGv2                      = "PINGv2"
+const val PINGv2                    = "PINGv2"
 const val SystemBytes               = "SystemBytes"
 const val BatteryState              = "BatteryState"
+const val SystemMac                 = "Version_MAC"
 
 //Deprecating Soon
 const val BATT_PERCENT              = "BATTERY_PERCENT"
 const val BATT_CHARGING_STATE       = "BATTERY_CHARGING_STATE"
 const val PING                      = "PING"
+const val VERSION                   = "android_version"
+const val MAC                       = "device_mac_address"
 
 const val MINUTE: Int               = 60 //SECONDS
 const val SUPPLICANT                = "SupplicantState"
@@ -48,8 +51,6 @@ const val RECEIVED_BYTES            = "BytesReceived"
 const val WIFI_CONNECTION_STATE     = "WiFiConnectionState"
 const val LTE_CONNECTION_STATE      = "LteConnectionState"
 const val INTERFACE_STATE           = "InterfaceState"
-const val VERSION                   = "android_version"
-const val MAC                       = "device_mac_address"
 
 const val AX_DOC_VERSION            = "AX_version"
 const val AX_PKG_NAME               = "com.augmedix.phone.prod"
@@ -166,8 +167,9 @@ object Util {
                 val transmittedDif = ((currentTransValue - prevTrans) / 1024.0).toBigDecimal().setScale(2, RoundingMode.UP).toDouble()
                 transmittedVal.add(0, currentTransValue)
 
-                addToEventList(arrayOf(SYSTEM, getTimeStamp(), RECEIVED_BYTES, receivedDif.toString()))
-                addToEventList(arrayOf(SYSTEM, getTimeStamp(), TRANSMITTED_BYTES, transmittedDif.toString()))
+                val newAr = arrayOf(SystemBytes, getTimeStamp(), receivedDif.toString(), transmittedDif.toString())
+
+                addToEventList(newAr)
             }
         } catch (e: Exception) {
             e.printStackTrace()

@@ -22,12 +22,9 @@ class SupplicantReceiver: BroadcastReceiver() {
         val action = intent?.action
 
         if (action != null) {
+
             val state = intent.getParcelableExtra<SupplicantState>(WifiManager.EXTRA_NEW_STATE)
             val networkState = intent.getParcelableExtra<NetworkInfo>(WifiManager.EXTRA_NETWORK_INFO)
-
-//            Log.d("CellShark_Supplicant_Event", "Network State: $networkState")
-//            Log.d("CellShark_Supplicant_Event", "Supplicant State: $state")
-//            Util.saveLogData(networkState.toString())
 
             if (state != null) {
 
@@ -39,7 +36,6 @@ class SupplicantReceiver: BroadcastReceiver() {
                     val wm = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
                     val wmInfo = wm.connectionInfo
                     if (wmInfo.bssid == null) { Util.addToEventList(arrayOf(SUPPLICANT, timestamp, state.toString(), " _ ", " _ " )) } else {
-                        Util.addToEventList(WiFiEvent(wm.connectionInfo, wm.scanResults, timestamp).csvLine)
                         Util.addToEventList(arrayOf(SUPPLICANT, timestamp, state.toString(), wmInfo.ssid, wmInfo.bssid))
                     }
                 }
