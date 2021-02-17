@@ -301,7 +301,7 @@ class CellSharkService: Service() {
         val files: MutableList<File>
         fileQueue.add(excludeFileName)
 
-        val fileLimit = 10
+        val fileLimit = 30
 
         if(allFiles != null) {
 
@@ -476,64 +476,7 @@ class CellSharkService: Service() {
         return PingInfo("dg", time, result)
 
     }
-
-
-    private fun ping(address: String, isDefaultGateway: Boolean = false) {
-        val result: Boolean
-        //start time
-        val timestamp = Util.getTimeStamp()
-
-        if(isDefaultGateway) alternatePing(address)
-        else {
-
-            val start = System.currentTimeMillis()
-
-            try {
-                val inetAddress = InetAddress.getByName(address)
-                result = inetAddress.isReachable(500)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                return
-            }
-
-            val end = System.currentTimeMillis()
-            var diff = (end-start).toInt()
-            if(!result) { diff = 0 }
-        }
-
-    }
-
-    private fun alternatePing(address: String) {
-
-        // This function is made specifically for default gateway pings. Since other method is iffy
-
-        val runtime = Runtime.getRuntime()
-
-        try {
-
-            val runCommand = runtime.exec("/system/bin/ping -c 1 $address")
-            val exitValue = runCommand.waitFor()
-            val stdInput = BufferedReader(InputStreamReader(runCommand.inputStream))
-
-            //Exit Value 0: Success
-            //Exit Value > 0: Failed
-
-            if(exitValue == 0) {
-                var count = 0
-                stdInput.forEachLine { inputLine ->
-                    if(count == 1) {
-                        Util.addToEventList(arrayOf(PING_GATEWAY, Util.getTimeStamp(), address, true.toString(), Util.getPingTime(inputLine)!!.toString()))
-                    }
-                    count++
-                }
-            }
-            else {
-                Util.addToEventList(arrayOf(PING_GATEWAY, Util.getTimeStamp(), address, false.toString(), .0.toString()))
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
+    
 
     private fun hasDataConnection(tm: TelephonyManager?, wm: WifiManager?): Boolean {
         //Mobile Data ---> isDataEnabled && NetworkOperator?
