@@ -16,7 +16,9 @@ import android.telephony.TelephonyManager
 import android.text.format.Formatter
 import android.util.Log
 import android.widget.Button
+import android.widget.Switch
 import android.widget.TextView
+import androidx.appcompat.widget.SwitchCompat
 import androidx.lifecycle.ViewModelProvider
 import org.jetbrains.anko.doAsync
 import org.jetbrains.anko.sdk27.coroutines.onClick
@@ -115,6 +117,10 @@ class MainActivity : AppCompatActivity() {
                         minimizeApp()
                     }
                 }
+                "LogBoth" -> {
+                    //Do Nothing... For Now
+                }
+
                 else -> {
                     minimizeApp()
                 }
@@ -142,6 +148,7 @@ class MainActivity : AppCompatActivity() {
         val rsrpLabel: TextView = findViewById(R.id.rsrp_label)
         val rsrqLabel: TextView = findViewById(R.id.rsrq_label)
         val bandLabel: TextView = findViewById(R.id.band_lbl)
+        val logSwitch: SwitchCompat = findViewById(R.id.logBothConnectionSwitch)
 
         //Telephony Object & Creating LTE Listener
         telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
@@ -150,6 +157,12 @@ class MainActivity : AppCompatActivity() {
         //Update Static Info
         macLabel.text = Util.getWifiMacAddress()
         lteSimState.text = getSimState(telephonyManager.simState)
+
+        logSwitch.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                //Do Nothing... For Now
+            }
+        }
 
         model.getLteData().observe(this, {
 

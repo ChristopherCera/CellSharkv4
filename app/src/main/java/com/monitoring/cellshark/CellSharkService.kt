@@ -79,12 +79,11 @@ class CellSharkService: Service() {
 
                 if (counter % 10 == 0) {
 
-//                    Util.saveLogData(counter.toString())
                     // We want the app to report which interface is being used for data every 10 seconds
                     val ci = getActiveConnectionInterface()
                     Util.addToEventList(arrayOf(INTERFACE_STATE, Util.getTimeStamp(), ci))
                     Util.saveTrafficStats()
-                    Log.d("I/CellShark", "Is an active interface ON? ${hasDataConnection(tm, wm)}")
+//                    Log.d("I/CellShark", "Is an active interface ON? ${hasDataConnection(tm, wm)}")
                     if (hasDataConnection(tm, wm)) {
                         processNetworkData(tm, wm)
                         val defaultGateway = Util.formatIP(wm.dhcpInfo.gateway)
@@ -95,7 +94,6 @@ class CellSharkService: Service() {
                                 result.add(newPing(address))
                             }
                             if (defaultGateway != "0.0.0.0") result.add(dgPing(defaultGateway))
-                            Log.d("CsDebugging", "result size: ${result.size}")
                             if(result.size > 0 )addPingData(result)
                         }
 
@@ -123,7 +121,7 @@ class CellSharkService: Service() {
             }
         }.also { loggingRunnable = it }
 
-        uploadRunnable = object : Runnable {
+        object : Runnable {
             override fun run() {
 
                 GlobalScope.launch(IO) {
@@ -141,7 +139,7 @@ class CellSharkService: Service() {
 //                Log.d("FTPRunnable,", "Upload Ping")
                 ftpHandler.postDelayed(this, 30000)
             }
-        }
+        }.also { uploadRunnable = it }
 
         loggingHandler.post(loggingRunnable)
         ftpHandler.post(uploadRunnable)
@@ -191,9 +189,6 @@ class CellSharkService: Service() {
         //1. Android usually prioritizes WiFi, so if there's a connection RETURN WiFi
         //2. Else return LTE if there's a connection to that
         //3. Else return NONE since it's not connected to anything....
-
-        val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-
         // Data Activity 0 --> No Activity with cell radios (LTE, 3G, etc)
         /*
         *
@@ -205,6 +200,7 @@ class CellSharkService: Service() {
          */
         //No SIM --> Mobile Data Toggle is OFF (Cannot be enabled)
 
+        val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         val tm = applicationContext.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
         val dataActivity = tm.dataActivity
 
