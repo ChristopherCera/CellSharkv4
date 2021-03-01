@@ -85,14 +85,14 @@ class MainActivity : AppCompatActivity() {
                     //Remove time restrictions
                 }
                 "ChangeListLimit" -> {
-                    Util.listLimit += 50
-                    Log.d("IntentCSRunner", "Intent received, increasing limit.\nConfirmed, new list size: ${Util.listLimit}")
+                    listLimit += 10
+                    Log.d("IntentCSRunner", "Intent received, increasing limit.\nConfirmed, new list size: ${listLimit}")
                     Timer("intentGoBackTimer", false).schedule(2500) {
                         minimizeApp()
                     }
                 }
                 "ResetListLimit" -> {
-                    Util.listLimit = 70
+                    listLimit = LIST_DEFAULT_SIZE
                     Timer("intentGoBackTimer", false).schedule(2500) {
                         minimizeApp()
                     }
@@ -111,14 +111,14 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 "ResetFTPTimeouts" -> {
-                    FTP_Timeout = 10000
-                    FTP_KeepAliveTimeout = 20000
+                    FTP_Timeout = FTP_DEFAULT_TIMEOUT
+                    FTP_KeepAliveTimeout = FTP_DEFAULT_KEEP_ALIVE
                     Timer("intentGoBackTimer", false).schedule(2500) {
                         minimizeApp()
                     }
                 }
                 "LogBoth" -> {
-                    //Do Nothing... For Now
+                    logBothMetrics = true
                 }
 
                 else -> {
@@ -132,7 +132,7 @@ class MainActivity : AppCompatActivity() {
 
         //Get Serial
         val textSn: TextView = findViewById(R.id.device_sn)
-        textSn.text = Util.getSerialNumber(applicationContext)
+        textSn.text = Util.getSerialNumber()
 
         //Get UI Elements
         val recordingButton: Button = findViewById(R.id.recording_button)
@@ -159,9 +159,7 @@ class MainActivity : AppCompatActivity() {
         lteSimState.text = getSimState(telephonyManager.simState)
 
         logSwitch.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                //Do Nothing... For Now
-            }
+            logBothMetrics = isChecked
         }
 
         model.getLteData().observe(this, {
@@ -272,14 +270,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getWiFiStandard(value: Int): String {
-        when(value) {
+        return when(value) {
 
-            ScanResult.WIFI_STANDARD_11AC ->    {   return "11AC" }
-            ScanResult.WIFI_STANDARD_11AX ->    {   return "11AX" }
-            ScanResult.WIFI_STANDARD_11N ->     {   return "11N" }
-            ScanResult.WIFI_STANDARD_LEGACY ->  {   return "LEGACY" }
-            ScanResult.WIFI_STANDARD_UNKNOWN -> {   return "UNKNOWN" }
-            else -> { return "N/A" }
+            ScanResult.WIFI_STANDARD_11AC ->    { "11AC" }
+            ScanResult.WIFI_STANDARD_11AX ->    { "11AX" }
+            ScanResult.WIFI_STANDARD_11N ->     { "11N" }
+            ScanResult.WIFI_STANDARD_LEGACY ->  { "LEGACY" }
+            ScanResult.WIFI_STANDARD_UNKNOWN -> { "UNKNOWN" }
+            else -> { "N/A" }
 
         }
     }
@@ -287,15 +285,15 @@ class MainActivity : AppCompatActivity() {
     private fun createDirectories() {
 
         val rootDir = getExternalFilesDir(null)!!
-        File(rootDir.absolutePath + File.separator + "Data" ).mkdirs()
-        File(rootDir.absolutePath + File.separator + "Logs" ).mkdirs()
+        File(rootDir.absolutePath + File.separator + DATA_DIRECTORY_NAME ).mkdirs()
+        File(rootDir.absolutePath + File.separator + LOGS_DIRECTORY_NAME ).mkdirs()
 
     }
 
     private fun createNotificationChannel() {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val importance = NotificationManager.IMPORTANCE_LOW
-        val notificationChannel = NotificationChannel(CHANNEL_ID, "CellShark", importance)
+        val notificationChannel = NotificationChannel(CHANNEL_ID, APPLICATION_NAME, importance)
         notificationChannel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         notificationManager.createNotificationChannel(notificationChannel)
     }

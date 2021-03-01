@@ -5,7 +5,7 @@ import android.net.wifi.WifiInfo
 import android.text.format.Formatter
 import android.util.Log
 
-class WiFiEvent(connectionInfo: WifiInfo, scanResult: MutableList<ScanResult>, timestamp: String) {
+class WiFiEvent(connectionInfo: WifiInfo, scanResult: MutableList<ScanResult>, timestamp: String, isNull: Boolean = false) {
 
     private var neighborApList: MutableList<ScanResult> = mutableListOf()
     private var connectedSSID: String = connectionInfo.ssid.replace("\"", "")

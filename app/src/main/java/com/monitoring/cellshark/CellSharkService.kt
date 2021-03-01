@@ -7,7 +7,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.os.*
 import android.provider.Settings
@@ -67,6 +66,8 @@ class CellSharkService: Service() {
         val bm = applicationContext.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         tm?.listen(ss, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS)
 
+        val appDirectory = applicationContext.getExternalFilesDir(null)!!.absolutePath
+
         mIntentFilter.addAction(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION)
         mIntentFilter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
         applicationContext.registerReceiver(supplicantStateReceiver, mIntentFilter)
@@ -79,36 +80,37 @@ class CellSharkService: Service() {
 
                 if (counter % 10 == 0) {
 
+                    logBatteryInfo(bm)
+
                     // We want the app to report which interface is being used for data every 10 seconds
-                    val ci = getActiveConnectionInterface()
-                    Util.addToEventList(arrayOf(INTERFACE_STATE, Util.getTimeStamp(), ci))
+                    Util.addToEventList(arrayOf(INTERFACE_STATE, Util.getTimeStamp(), getActiveConnectionInterface()))
                     Util.saveTrafficStats()
 //                    Log.d("I/CellShark", "Is an active interface ON? ${hasDataConnection(tm, wm)}")
                     if (hasDataConnection(tm, wm)) {
+
                         processNetworkData(tm, wm)
                         val defaultGateway = Util.formatIP(wm.dhcpInfo.gateway)
                         val result = mutableListOf<PingInfo>()
 
                         GlobalScope.launch(IO) {
                             axEndPoints.forEach { address ->
-                                result.add(newPing(address))
+                                result.add(ping(address))
                             }
-                            if (defaultGateway != "0.0.0.0") result.add(dgPing(defaultGateway))
-                            if(result.size > 0 )addPingData(result)
+                            if (defaultGateway != "0.0.0.0") result.add(defaultGatewayPing(defaultGateway))
+                            if(result.size > 0 ) addPingData(result)
                         }
 
                     }
                 }
 
-                if (counter % 30 == 0) {
-                    wm.startScan()
-                    logBatteryInfo(bm)
+                if (counter % 30 == 0) { wm.startScan() }
+                if (counter % 300 == 0) {
+                    logBatteryUsage(bm)
                 }
 
                 //Daily
                 if(counter % (MINUTE*1440) == 0) {
                     Util.updateFTPConnection(true)
-                    logDocAppVersion()
                     val buildNum = Build.VERSION.SDK_INT
                     val mac = Util.getWifiMacAddress()
                     val newAr = arrayOf(SystemMac, Util.getTimeStamp(), buildNum.toString(), mac)
@@ -129,10 +131,10 @@ class CellSharkService: Service() {
                     val fileName = saveToFile()
                     Log.d("Cellshark", "is Ftp Uloading? $FTP_isUploading")
                     if (!FTP_isUploading) {
-                        val size = File(Util.dataDir).listFiles()!!.size
+                        val size = File(appDirectory + File.separator + DATA_DIRECTORY_NAME).listFiles()!!.size
                         if (size > 1 ) mergeFileData(fileName)
                         else fileQueue.add(fileName)
-                        if (Util.FTP_SERVER_ACCESS) upload()
+                        if (FTP_SERVER_ACCESS) upload()
                     }
 
                 }
@@ -155,33 +157,7 @@ class CellSharkService: Service() {
         return START_NOT_STICKY
     }
 
-    private fun addPingData(data: MutableList<PingInfo>) {
 
-        val newAr: Array<String>
-        val temp: MutableList<String> = mutableListOf(PINGv2, Util.getTimeStamp() )
-
-        // Index
-        // 0 - PINGv2
-        // 1 - Timestamp
-        // 2-> End {2 address, 3 duration, 4 result}
-        // 6-> End {5 address, 6 duration, 7 result}
-
-        for (index in 0..4) {
-            if (data.getOrNull(index) != null) {
-                temp.add(data[index].adress)
-                temp.add(data[index].duration)
-                temp.add(data[index].result.toString())
-            } else {
-                temp.add("None")
-                temp.add("None")
-                temp.add("None")
-            }
-        }
-
-        newAr = temp.toTypedArray()
-
-        Util.addToEventList(newAr)
-    }
 
     fun getActiveConnectionInterface(): String {
 
@@ -206,26 +182,17 @@ class CellSharkService: Service() {
 
 //        Log.d("csDebug", "Data State: $mobileDataState\tActivity: $dataActivity")
 
-        return if(isWifiConnected(wm) && dataActivity == TelephonyManager.DATA_ACTIVITY_NONE) {
-            "WiFi"
-        }
-        else if (tm.isDataEnabled) { "LTE" }
+        return if(isConnectedSSID(wm) && dataActivity == TelephonyManager.DATA_ACTIVITY_NONE) { WIFI_INT }
+        else if (tm.isDataEnabled) { LTE_INT }
         else { "Offline" }
     }
 
     private fun upload() {
+
+        val appDirectory = applicationContext.getExternalFilesDir(null)!!.absolutePath
         FTP_isUploading = true
-        val uploadFileLimit = 5
-        val count = 0
-        fileQueue.forEach{
-            Log.d("FileQueuePrint", it)
-        }
 
-//        val tempFileQueue = fileQueue
-//        tempFileQueue.forEach {
-//            Log.d("FileQueuePrint", "v2 $it" )
-//        }
-
+        val appDataDir = File(appDirectory + File.separator + DATA_DIRECTORY_NAME ).absolutePath
         val ftpClient = FTPSSLClient()
         val out = StringWriter()
 
@@ -246,9 +213,9 @@ class CellSharkService: Service() {
             //Enabling here will ensure no thread crashes due to list manipulation
             Util.updateFTPConnection(true)
 
-            fileQueue.take(4).forEach { fileName ->
+            fileQueue.take(5).forEach { fileName ->
 
-                val filePath = File(Util.dataDir + File.separator + fileName)
+                val filePath = File(appDataDir + File.separator + fileName)
                 if(!filePath.exists()) { return@forEach }
 
                 try {
@@ -256,10 +223,7 @@ class CellSharkService: Service() {
                     val result = ftpClient.appendFile("/CellShark/Data/$fileName", fileLocation)
                     Log.i("csDebug", "reply Code: ${ftpClient.replyCode}")
                     if (result) { filePath.delete() }
-                } catch (e: java.lang.Exception) {
-                    e.printStackTrace()
-                    Log.d("FTP_CellShark", "Crashed Here v1")
-                }
+                } catch (e: java.lang.Exception) { e.printStackTrace() }
 
             }
 
@@ -268,7 +232,6 @@ class CellSharkService: Service() {
             ftpClient.disconnect()
 
         } catch (e: Exception) {
-            Log.d("FTP_CellShark", "Crashed Here v3")
             Util.updateFTPConnection(false)
             e.printStackTrace()
             val logString = out.toString()
@@ -287,13 +250,13 @@ class CellSharkService: Service() {
          * Function will merge previous files into one, to reduce the # of connection attempts to the
          * FTP Server.
          * Limitations -- No more than 300kb per file combined
-         * To reduce a high number of file append requests, I'm reducing total # of files on device to 50.
+         * To reduce a high number of file append requests, I'm reducing total # of files on device to 30.
          *
          */
-
+        val appDirectory = applicationContext.getExternalFilesDir(null)!!.absolutePath
         val records: MutableList<Array<String>> = mutableListOf()
         var totalSize = 0
-        val allFiles = File(Util.dataDir).listFiles()
+        val allFiles = File(appDirectory + File.separator + DATA_DIRECTORY_NAME).listFiles()
         val files: MutableList<File>
         fileQueue.add(excludeFileName)
 
@@ -330,9 +293,9 @@ class CellSharkService: Service() {
                 }
             }
 
-            val fileName = "${Util.getSerialNumber(applicationContext)}_" +
+            val fileName = "${Util.getSerialNumber()}_" +
                     SimpleDateFormat(DATE_FORMAT_FILE, Locale.getDefault()).format(Date()) + "_merged.csv"
-            val filePath = File(Util.dataDir + File.separator + fileName)
+            val filePath = File(appDirectory + File.separator + DATA_DIRECTORY_NAME + File.separator + fileName)
 
             val mFileWriter = FileWriter(filePath, false)
             val csvWriter = CSVWriter(mFileWriter)
@@ -348,10 +311,10 @@ class CellSharkService: Service() {
     }
 
     private  fun saveToFile(): String {
-
-        val fileName = "${Util.getSerialNumber(applicationContext)}_" +
+        val appDirectory = applicationContext.getExternalFilesDir(null)!!.absolutePath
+        val fileName = "${Util.getSerialNumber()}_" +
                 SimpleDateFormat(DATE_FORMAT_FILE, Locale.getDefault()).format(Date()) + ".csv"
-        val filePath = File(Util.dataDir + File.separator + fileName)
+        val filePath = File(appDirectory + File.separator + DATA_DIRECTORY_NAME + File.separator + fileName)
 
 
         val mFileWriter = FileWriter(filePath, false)
@@ -370,50 +333,81 @@ class CellSharkService: Service() {
         return fileName
     }
 
-     private fun logDocAppVersion() {
-        val pm = packageManager
-        val installedApps = pm.getInstalledPackages(PackageManager.GET_META_DATA)
-        installedApps.forEach { app ->
-            if(app.packageName == AX_PKG_NAME) {
-                Util.addToEventList(arrayOf(AX_DOC_VERSION, Util.getTimeStamp(), app.versionName.toString()))
-            }
-        }
-    }
-
     @SuppressLint("MissingPermission")
     private fun processNetworkData(tm: TelephonyManager?, wm: WifiManager?) {
 
-        //LTE Data
-        var registeredLTETower = false
-        tm?.allCellInfo?.forEach { event ->
-            when (event) {
-                is CellInfoLte -> {
-                    if (event.isRegistered) {
-                        registeredLTETower = true
-                        val lteEvent = LteEvent(event)
-                        Util.addToEventList(lteEvent.csvLine)
+
+        if (logBothMetrics) {
+
+            tm?.allCellInfo?.forEach { info ->
+                when (info) {
+                    is CellInfoLte -> {
+                        if (info.isRegistered) {
+                            Util.addToEventList(LteEvent(info).csvLine)
+                        }
+                    }
+                }
+            }
+
+            if (wm != null) {
+                if (Util.isWiFiNotNull(wm)) {
+                    Util.addToEventList(WiFiEvent(wm.connectionInfo, wm.scanResults, Util.getTimeStamp()).csvLine)
+                }
+            }
+
+        }
+
+        else {
+            if(getActiveConnectionInterface() == WIFI_INT ) {
+                if (wm != null) {
+                    if (Util.isWiFiNotNull(wm)) {
+                        Util.addToEventList(WiFiEvent(wm.connectionInfo, wm.scanResults, Util.getTimeStamp()).csvLine)
+                    }
+                }
+            } else if (getActiveConnectionInterface() == LTE_INT ) {
+                tm?.allCellInfo?.forEach { info ->
+                    when (info) {
+                        is CellInfoLte -> {
+                            if (info.isRegistered) {
+                                Util.addToEventList(LteEvent(info).csvLine)
+                            }
+                        }
                     }
                 }
             }
         }
 
-        if(registeredLTETower) Util.addToEventList(arrayOf(LTE_CONNECTION_STATE, Util.getTimeStamp(), "1"))
-        else Util.addToEventList(arrayOf(LTE_CONNECTION_STATE, Util.getTimeStamp(), "0"))
-
-        //Wireless Data
-        if (wm != null) {
-            if(Util.isWiFiConnected(wm)) {
-                val wifiEvent = WiFiEvent(wm.connectionInfo, wm.scanResults, Util.getTimeStamp())
-                Util.addToEventList(wifiEvent.csvLine)
-            } else {
-                Util.addToEventList(arrayOf(WIFI_CONNECTION_STATE, Util.getTimeStamp(), "0"))
-            }
-        } else {
-            Util.addToEventList(arrayOf(WIFI_CONNECTION_STATE, Util.getTimeStamp(), "0"))
-        }
     }
 
-    private fun newPing(address: String): PingInfo {
+    private fun addPingData(data: MutableList<PingInfo>) {
+
+        val newAr: Array<String>
+        val temp: MutableList<String> = mutableListOf(PINGv2, Util.getTimeStamp() )
+
+        // Index
+        // 0 - PINGv2
+        // 1 - Timestamp
+        // 2-> End {2 address, 3 duration, 4 result}
+        // 6-> End {5 address, 6 duration, 7 result}
+
+        for (index in 0..4) {
+            if (data.getOrNull(index) != null) {
+                temp.add(data[index].adress)
+                temp.add(data[index].duration)
+                temp.add(data[index].result.toString())
+            } else {
+                temp.add("None")
+                temp.add("None")
+                temp.add("None")
+            }
+        }
+
+        newAr = temp.toTypedArray()
+
+        Util.addToEventList(newAr)
+    }
+
+    private fun ping(address: String): PingInfo {
 
         val name = when(address) {
             axEndPoints[0] -> "CC"
@@ -422,9 +416,6 @@ class CellSharkService: Service() {
             axEndPoints[3] -> "mcu4"
             else -> address
         }
-
-        Log.d("CsDebugging", "newPing() -- Running")
-
 
         val result: Boolean
         val start = System.currentTimeMillis()
@@ -436,13 +427,12 @@ class CellSharkService: Service() {
         }
 
         val end = System.currentTimeMillis()
-        val time = if (result) { (end-start).toInt() } else { 0 }
+        val time = (end-start).toInt()
 
-//        Log.d("CsDebugging", "newPing() -- Running")
         return PingInfo(name, time.toString(), result)
     }
 
-    private fun dgPing(address: String): PingInfo {
+    private fun defaultGatewayPing(address: String): PingInfo {
 
         val runtime = Runtime.getRuntime()
         var time: String = "0"
@@ -469,17 +459,17 @@ class CellSharkService: Service() {
             e.printStackTrace()
         }
 
-        return PingInfo("dg", time, result)
+        return PingInfo(address, time, result)
 
     }
     
 
     private fun hasDataConnection(tm: TelephonyManager?, wm: WifiManager?): Boolean {
         //Mobile Data ---> isDataEnabled && NetworkOperator?
-        return isWifiConnected(wm!!) || (tm!!.isDataEnabled && tm.networkOperator != "")
+        return isConnectedSSID(wm!!) || (tm!!.isDataEnabled && tm.networkOperator != "")
     }
 
-    private fun isWifiConnected(wm: WifiManager): Boolean {
+    private fun isConnectedSSID(wm: WifiManager): Boolean {
         return run {
             val netInfo = wm.connectionInfo
             (wm.wifiState == WifiManager.WIFI_STATE_ENABLED
@@ -491,12 +481,39 @@ class CellSharkService: Service() {
         //Battery Percent
         try {
             val batteryCapacity = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).toString()
+            val batteryCurrent = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+            val screenBrightness = ((Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS).toDouble()/ 255 ) * 100).toInt()
             val batteryChargingState = if(isPowerPluggedIn(applicationContext))  "100" else "0"
-            val newAr = arrayOf(BatteryState, Util.getTimeStamp(), batteryCapacity, batteryChargingState)
+            val newAr = arrayOf(BATTERY_INFO, Util.getTimeStamp(), batteryCapacity, batteryChargingState, batteryCurrent.toString(), screenBrightness.toString())
             Util.addToEventList(newAr)
         } catch (e: Exception) {
             e.printStackTrace()
         }
+
+    }
+
+
+    private fun logBatteryUsage(bm: BatteryManager) {
+
+        Log.d("CellShark_Battery_Info", "Running logBatteryUsage()")
+
+        val appDirectory = applicationContext.getExternalFilesDir(null)!!.absolutePath
+        val currentBatteryPercent = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        var batteryDif = 0.0
+        val fileName = "BatteryInfo.txt"
+        if ( !File( appDirectory, fileName ).exists() ) {
+            File( appDirectory, fileName ).writeText(currentBatteryPercent.toString())
+        } else {
+            val previousPercent = File(appDirectory, fileName).readLines()[0]
+            batteryDif = currentBatteryPercent.toDouble() - previousPercent.toDouble()
+            File( appDirectory, fileName ).writeText(currentBatteryPercent.toString())
+        }
+
+        batteryDif *= 12        //Per Hour (5 minutes * 2 = 10 minutes * 6 = 1 hour Rate)
+
+        Util.addToEventList(arrayOf(BATTERY_USAGE_RATE, Util.getTimeStamp(), batteryDif.toString()))
+
+        Log.d("Cellshark_Battery", "Battery Difference: $batteryDif")
 
     }
 

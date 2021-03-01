@@ -9,85 +9,33 @@ import java.util.*
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
-import org.jetbrains.anko.doAsync
 import java.io.*
 import java.math.RoundingMode
 import java.net.NetworkInterface
 
-
-//New up to date endpoints
-val axEndPoints = arrayOf("connectivitycheck.android.com", "echo.augmedix.com",
-    "www.google.com", "mcu4.augmedix.com")
-
-
-//New Variables
-const val PINGv2                    = "PINGv2"
-const val SystemBytes               = "SystemBytes"
-const val BatteryState              = "BatteryState"
-const val SystemMac                 = "Version_MAC"
-
-//Deprecating Soon
-const val BATT_PERCENT              = "BATTERY_PERCENT"
-const val BATT_CHARGING_STATE       = "BATTERY_CHARGING_STATE"
-const val PING                      = "PING"
-const val VERSION                   = "android_version"
-const val MAC                       = "device_mac_address"
-
-const val MINUTE: Int               = 60 //SECONDS
-const val SUPPLICANT                = "SupplicantState"
-const val WIFI                      = "WIFI"
-const val PING_GATEWAY              = "Default_Gateway_Ping"
-const val LTE                       = "LTEv2"
-const val SYSTEM                    = "SYSTEM"
-const val REBOOT_EVENT              = "REBOOT"
-const val TIME_FORMAT_LOG           = "h:mm z"
-const val DATE_FORMAT_FILE          = "Mddkkmmss"
-const val DATE_FORMAT_LOG           = "M-dd"
-const val DATE_FORMAT_SINGLE_EVENT  = "MM/dd/yyyy'T'HH:mm:ss.SSS"
-const val TIME_FORMAT_MICRO         = "HH:mm:ss.SSS z"
-const val ACTIVITY_INTENT_KEY       = "runService"
-const val TRANSMITTED_BYTES         = "BytesTransmitted"
-const val RECEIVED_BYTES            = "BytesReceived"
-const val WIFI_CONNECTION_STATE     = "WiFiConnectionState"
-const val LTE_CONNECTION_STATE      = "LteConnectionState"
-const val INTERFACE_STATE           = "InterfaceState"
-
-const val AX_DOC_VERSION            = "AX_version"
-const val AX_PKG_NAME               = "com.augmedix.phone.prod"
-const val startWorkWeekDay     = Calendar.MONDAY
-const val endWorkWeekDay       = Calendar.FRIDAY
-const val startWorkWeekHour         = 6
-const val endWorkWeekHour           = 20
-const val CHANNEL_ID                = "com.monitor.cellshark"
-
-//FTP Variables
-const val FTP_ADDRESS               = "cellshark.augmedix.com"
-const val FTP_PORT                  = 1161
-const val username                  = "cs"
-const val password                  = "btQ3Q3RPu9"
+// FTP Globals
 var FTP_Timeout                     = 15000
 var FTP_KeepAliveTimeout: Long      = 30000
 var FTP_isUploading                 = false
-
+var FTP_SERVER_ACCESS               = true
 
 // Global variable to keep UI elements accurate
-var csRunning = false
+var csRunning                       = false
+var listLimit                       = 16
+var logBothMetrics                  = false
 
 object Util {
-    var listLimit                 = 70
+
     private var eventList: MutableList<Array<String>> = mutableListOf()
     private var secondaryEventList: MutableList<Array<String>> = mutableListOf()
-
-    var primaryListOccupied = false
-    var FTP_SERVER_ACCESS = true
+    private var primaryListOccupied = false
     private val receivedVal = mutableListOf<Long>()
     private val transmittedVal = mutableListOf<Long>()
     private var ftpCount: Int = 0
 
     //File Variables
     private val parentDir = File("/storage/emulated/0/Android/data/com.monitoring.cellshark/files").absolutePath
-//    private val parentDir = File("/storage/emulated/0/Android/data/com.monitoring.cellguppie/files").absolutePath
-    val dataDir: String = File(parentDir + File.separator + "Data").absolutePath
+    private val dataDir: String = File(parentDir + File.separator + "Data").absolutePath
 
     fun updateFTPConnection(result: Boolean) {
 
@@ -216,8 +164,16 @@ object Util {
         return ""
     }
 
+    private fun getMACSerial(): String {
+
+        var mac = getWifiMacAddress()
+        mac = mac.replace(":", "")
+        return mac
+
+    }
+
     @SuppressLint("MissingPermission", "PrivateApi", "HardwareIds")
-    fun getSerialNumber(context: Context): String? {
+    fun getSerialNumber(): String? {
         var serialNumber: String?
 
         try {
@@ -250,7 +206,7 @@ object Util {
             }
         }
 
-        if (serialNumber == "unknown") { serialNumber = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) }
+        if (serialNumber == "unknown") { serialNumber = getMACSerial() }
 
         return serialNumber
     }
@@ -284,7 +240,7 @@ object Util {
 
     }
 
-    fun isWiFiConnected(wm: WifiManager): Boolean {
+    fun isWiFiNotNull(wm: WifiManager): Boolean {
         if(wm.connectionInfo.bssid != null && wm.connectionInfo.bssid != "02:00:00:00:00") {
             if(wm.connectionInfo.rssi > -100 && wm.connectionInfo.linkSpeed > 0) return true
         }

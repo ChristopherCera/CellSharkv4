@@ -83,13 +83,14 @@
 
         <com.google.android.material.switchmaterial.SwitchMaterial
             android:id="@+id/logBothConnectionSwitch"
-            app:layout_constraintStart_toStartOf="@id/start_guideline"
-            app:layout_constraintTop_toBottomOf="@id/deviceMac_Layout"
-            android:layout_marginTop="14dp"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="Record LTE and WiFi        "
-            />
+            android:layout_marginTop="14dp"
+            android:text="Monitor LTE and WiFi        "
+            android:textSize="20sp"
+            app:layout_constraintEnd_toStartOf="@+id/end_guideline"
+            app:layout_constraintStart_toStartOf="@id/start_guideline"
+            app:layout_constraintTop_toBottomOf="@id/deviceMac_Layout" />
 
 
         <TextView

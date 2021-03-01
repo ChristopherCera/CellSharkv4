@@ -1,12 +1,11 @@
 package com.monitoring.cellshark
 
 import android.os.Build
-import android.telephony.CellInfo
 import android.telephony.CellInfoLte
 import java.text.SimpleDateFormat
 import java.util.*
 
-class LteEvent(cellInfo: CellInfoLte, rsrp: Int = 0, rsrq: Int = 0, earfcn: Int = 0) {
+class LteEvent(cellInfo: CellInfoLte, rsrp: Int = 0, rsrq: Int = 0, earfcn: Int = 0, isNull: Boolean = false) {
 
     private var cellBand: Int = 0
     private var timestamp: String
@@ -14,6 +13,7 @@ class LteEvent(cellInfo: CellInfoLte, rsrp: Int = 0, rsrq: Int = 0, earfcn: Int 
     var csvLine: Array<String>
 
     init {
+
 
         val time = SimpleDateFormat(DATE_FORMAT_SINGLE_EVENT, Locale.getDefault())
         time.timeZone = TimeZone.getTimeZone("UTC")
