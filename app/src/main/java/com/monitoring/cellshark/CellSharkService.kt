@@ -34,6 +34,7 @@ class CellSharkService: Service() {
     private val loggingThread = HandlerThread("loggingThread")
     private val supplicantStateReceiver = SupplicantReceiver()
     private val mIntentFilter = IntentFilter()
+    private var totalCurrentBattery = mutableListOf<Double>()
 
     private var tm: TelephonyManager? = null
     private lateinit var ss: PhoneStateListener
@@ -77,6 +78,8 @@ class CellSharkService: Service() {
 
         object : Runnable {
             override fun run() {
+
+                saveBatteryCurrent(bm)
 
                 if (counter % 10 == 0) {
 
@@ -242,6 +245,10 @@ class CellSharkService: Service() {
         }
 
         FTP_isUploading = false
+    }
+
+    private fun uploadHTTP() {
+
     }
 
     private fun mergeFileData(excludeFileName: String) {
@@ -481,16 +488,32 @@ class CellSharkService: Service() {
         //Battery Percent
         try {
             val batteryCapacity = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).toString()
-            val batteryCurrent = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
             val screenBrightness = ((Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS).toDouble()/ 255 ) * 100).toInt()
             val batteryChargingState = if(isPowerPluggedIn(applicationContext))  "100" else "0"
-            val newAr = arrayOf(BATTERY_INFO, Util.getTimeStamp(), batteryCapacity, batteryChargingState, batteryCurrent.toString(), screenBrightness.toString())
+            var calculatedBatteryUsage = 0.0
+            totalCurrentBattery.forEach {
+                calculatedBatteryUsage += it
+            }
+            calculatedBatteryUsage /= totalCurrentBattery.size
+            val newAr = arrayOf(BATTERY_INFO, Util.getTimeStamp(), batteryCapacity, batteryChargingState, calculatedBatteryUsage.toString(), screenBrightness.toString())
+            totalCurrentBattery.clear()
             Util.addToEventList(newAr)
         } catch (e: Exception) {
             e.printStackTrace()
         }
 
     }
+
+    private fun saveBatteryCurrent(bm: BatteryManager) {
+
+        val batteryCurrent = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW).toDouble() / 1000.0
+        val batteryCurrentmah = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+        Log.d("CellShark_Current", "Current Now: $batteryCurrentmah")
+        totalCurrentBattery.add(batteryCurrentmah.toDouble())
+
+
+    }
+
 
 
     private fun logBatteryUsage(bm: BatteryManager) {

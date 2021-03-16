@@ -4,14 +4,15 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.net.TrafficStats
 import android.net.wifi.WifiManager
-import java.text.SimpleDateFormat
-import java.util.*
 import android.os.Build
-import android.provider.Settings
 import android.util.Log
-import java.io.*
+import android.widget.Toast
+import java.io.File
 import java.math.RoundingMode
 import java.net.NetworkInterface
+import java.text.SimpleDateFormat
+import java.util.*
+
 
 // FTP Globals
 var FTP_Timeout                     = 15000
@@ -21,8 +22,9 @@ var FTP_SERVER_ACCESS               = true
 
 // Global variable to keep UI elements accurate
 var csRunning                       = false
-var listLimit                       = 16
-var logBothMetrics                  = false
+var listLimit                       = 30
+var logBothMetrics                  = true
+
 
 object Util {
 
@@ -32,6 +34,7 @@ object Util {
     private val receivedVal = mutableListOf<Long>()
     private val transmittedVal = mutableListOf<Long>()
     private var ftpCount: Int = 0
+
 
     //File Variables
     private val parentDir = File("/storage/emulated/0/Android/data/com.monitoring.cellshark/files").absolutePath
@@ -97,6 +100,9 @@ object Util {
         secondaryEventList.clear()
     }
 
+    @SuppressLint("PrivateApi")
+
+
     fun saveTrafficStats() {
 
         try {
@@ -126,11 +132,11 @@ object Util {
 
     fun formatIP(ip: Int): String {
         return String.format(
-            "%d.%d.%d.%d",
-            ip and 0xff,
-            ip shr 8 and 0xff,
-            ip shr 16 and 0xff,
-            ip shr 24 and 0xff
+                "%d.%d.%d.%d",
+                ip and 0xff,
+                ip shr 8 and 0xff,
+                ip shr 16 and 0xff,
+                ip shr 24 and 0xff
         )
     }
 

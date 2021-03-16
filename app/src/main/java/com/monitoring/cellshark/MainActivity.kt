@@ -148,7 +148,6 @@ class MainActivity : AppCompatActivity() {
         val rsrpLabel: TextView = findViewById(R.id.rsrp_label)
         val rsrqLabel: TextView = findViewById(R.id.rsrq_label)
         val bandLabel: TextView = findViewById(R.id.band_lbl)
-        val logSwitch: SwitchCompat = findViewById(R.id.logBothConnectionSwitch)
 
         //Telephony Object & Creating LTE Listener
         telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
@@ -158,9 +157,7 @@ class MainActivity : AppCompatActivity() {
         macLabel.text = Util.getWifiMacAddress()
         lteSimState.text = getSimState(telephonyManager.simState)
 
-        logSwitch.setOnCheckedChangeListener { _, isChecked ->
-            logBothMetrics = isChecked
-        }
+
 
         model.getLteData().observe(this, {
 
