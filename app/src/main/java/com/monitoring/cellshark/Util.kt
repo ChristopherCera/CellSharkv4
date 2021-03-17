@@ -1,12 +1,10 @@
 package com.monitoring.cellshark
 
 import android.annotation.SuppressLint
-import android.content.Context
 import android.net.TrafficStats
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.util.Log
-import android.widget.Toast
 import java.io.File
 import java.math.RoundingMode
 import java.net.NetworkInterface
@@ -33,26 +31,27 @@ object Util {
     private var primaryListOccupied = false
     private val receivedVal = mutableListOf<Long>()
     private val transmittedVal = mutableListOf<Long>()
-    private var ftpCount: Int = 0
+    private var totalFailedConnectionAttempts: Int = 0
 
 
     //File Variables
     private val parentDir = File("/storage/emulated/0/Android/data/com.monitoring.cellshark/files").absolutePath
     private val dataDir: String = File(parentDir + File.separator + "Data").absolutePath
 
-    fun updateFTPConnection(result: Boolean) {
+    fun updateFailedConnectionAttempts(connectionResult: Boolean) {
 
         /*
-        *   If unable to access FTP server after 1 hour, stop attempting every 30 seconds.
+        *   If unable to access FTP server after 2 hour, stop attempting every 30 seconds.
         *   Reset each day or reboot
          */
-        Log.d("csDebug", "FTP Connection State: $FTP_SERVER_ACCESS \tFTP Failed Counts: $ftpCount")
-        if (!result) {
-            ftpCount++
-            if (ftpCount >= 120) FTP_SERVER_ACCESS = false
+
+        Log.d("csDebug", "FTP Connection State: $FTP_SERVER_ACCESS \tFTP Failed Counts: $totalFailedConnectionAttempts")
+        if (!connectionResult) {
+            totalFailedConnectionAttempts++
+            if (totalFailedConnectionAttempts >= CON_ATTEMPT_LIMIT) FTP_SERVER_ACCESS = false
         } else {
             FTP_SERVER_ACCESS = true
-            ftpCount = 0
+            totalFailedConnectionAttempts = 0
         }
 
     }

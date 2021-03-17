@@ -17,7 +17,10 @@ const val WIFI_INT                  = "WiFi"
 const val LTE_INT                   = "LTE"
 const val BATTERY_INFO              = "BatteryInfo"
 const val BATTERY_USAGE_RATE        = "BatteryRate"
-const val FILE_SIZE_LIMIT           = 50
+const val FILE_SIZE_LIMIT           = 250
+const val TOTAL_FILE_LIMIT          = 30
+const val CELLSHARK_HTTP_LINK       = "http://cellshark.augmedix.com:1200/upload"
+const val CON_ATTEMPT_LIMIT         = 60
 
 //Current
 const val PINGv2                    = "PINGv2"

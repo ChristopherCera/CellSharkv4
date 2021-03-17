@@ -18,25 +18,16 @@ import android.widget.Toast
 import com.github.kittinunf.fuel.Fuel
 import com.github.kittinunf.fuel.core.FileDataPart
 import com.github.kittinunf.fuel.core.Method
-import com.github.kittinunf.fuel.core.awaitUnit
-import com.github.kittinunf.fuel.httpPost
 import com.opencsv.CSVReader
 import com.opencsv.CSVWriter
-import io.github.rybalkinsd.kohttp.dsl.httpPost
-import io.github.rybalkinsd.kohttp.ext.httpGet
 import kotlinx.coroutines.*
 import kotlinx.coroutines.Dispatchers.IO
 import org.apache.commons.net.PrintCommandListener
 import org.apache.commons.net.ftp.FTP
-import org.apache.http.client.HttpClient
-import org.apache.http.impl.client.DefaultHttpClient
-import org.jetbrains.anko.custom.async
 import org.jetbrains.anko.doAsync
 import java.io.*
 import java.lang.Runnable
-import java.net.HttpURLConnection
 import java.net.InetAddress
-import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.Result.*
@@ -105,7 +96,7 @@ class CellSharkService: Service() {
 //                    Log.d("I/CellShark", "Is an active interface ON? ${hasDataConnection(tm, wm)}")
                     if (hasDataConnection(tm, wm)) {
 
-                        processNetworkData(tm, wm)
+                        processNetworkObjects(tm, wm)
                         val defaultGateway = Util.formatIP(wm.dhcpInfo.gateway)
                         val result = mutableListOf<PingInfo>()
 
@@ -127,7 +118,7 @@ class CellSharkService: Service() {
 
                 //Daily
                 if(counter % (MINUTE*1440) == 0) {
-                    Util.updateFTPConnection(true)
+                    Util.updateFailedConnectionAttempts(true)
                     val buildNum = Build.VERSION.SDK_INT
                     val mac = Util.getWifiMacAddress()
                     val newAr = arrayOf(SystemMac, Util.getTimeStamp(), buildNum.toString(), mac)
@@ -145,13 +136,13 @@ class CellSharkService: Service() {
 
                 GlobalScope.launch(IO) {
 
-                    val fileName = saveToFile()
+                    saveMetricsToCSV()
                     Log.d("Cellshark", "is Ftp Uloading? $FTP_isUploading")
                     if (!FTP_isUploading) {
-                        val size = File(appDirectory + File.separator + DATA_DIRECTORY_NAME).listFiles()!!.size
-                        if (size > 1 ) mergeFileData(fileName)
-                        else fileQueue.add(fileName)
-//                        httpPost()
+                        mergeFileData()
+                        //Check FTP Connection
+                        //If FTP Failed, Check HTTP Connection
+                        httpPost()
 //                        if (FTP_SERVER_ACCESS) upload()
                     }
 
@@ -205,6 +196,20 @@ class CellSharkService: Service() {
         else { "Offline" }
     }
 
+    private fun httpUpload(filePath: String) {
+        val fileData = FileDataPart.from(filePath, name="csFile")
+        Fuel.upload("http://cellshark.augmedix.com:1200/upload", Method.POST).add(fileData).timeout(10000).response { request, response, result ->
+            if (response.statusCode / 100 == 2) {
+                Log.d("CellShark_HTTP_POST_Response", "Status Code Successful, Deleting File")
+                Util.updateFailedConnectionAttempts(true)
+//                File(filePath).delete()
+            }
+            else Log.d("CellShark_HTTP_POST_Response", "\nRequest: $request \nResponse: $response\nResult: $result")
+
+            Log.d("CellShark_HTTP_POST_Response", "\nRequest: $request \nResponse: $response\nResult: $result")
+        }
+    }
+
     private fun httpPost() {
 
         val appDirectory = applicationContext.getExternalFilesDir(null)!!.absolutePath
@@ -212,18 +217,20 @@ class CellSharkService: Service() {
         val files = File(appDataDir).listFiles()!!
 
 
+        files.take(4).forEach { _file ->
 
-        //VERSION 2
+            doAsync {
 
-        files.take(2).forEach { _file ->
-
-            doAsync { Log.d("CellShark_HTTP_POST", "Sending ${_file.name}")
+                Log.d("CellShark_HTTP_POST", "Sending ${_file.name}")
 
                 val file = FileDataPart.from(_file.absolutePath, name="csFile")
 
-                Fuel.upload("http://cellshark.augmedix.com:1200/upload", Method.POST).add(file).timeout(10000).response { request, response, result ->
+                Fuel.upload(CELLSHARK_HTTP_LINK, Method.POST).add(file).timeout(10000).response { request, response, result ->
 
-                    if (response.statusCode / 100 == 2) File(appDataDir + File.separator + _file.name).delete()
+                    if (response.statusCode / 100 == 2) {
+                        Log.d("CellShark_HTTP_POST_Response", "Status Code Successful, Deleting File")
+//                      File(filePath).delete()
+                    }
                     else Log.d("CellShark_HTTP_POST_Response", "\nRequest: $request \nResponse: $response\nResult: $result")
 
                     Log.d("CellShark_HTTP_POST_Response", "\nRequest: $request \nResponse: $response\nResult: $result")
@@ -257,12 +264,13 @@ class CellSharkService: Service() {
 
     }
 
-    private fun upload() {
+    private fun ftpUpload() {
 
         val appDirectory = applicationContext.getExternalFilesDir(null)!!.absolutePath
         FTP_isUploading = true
 
         val appDataDir = File(appDirectory + File.separator + DATA_DIRECTORY_NAME ).absolutePath
+        val files = File(appDataDir).listFiles()!!
         val ftpClient = FTPSSLClient()
         val out = StringWriter()
 
@@ -281,16 +289,16 @@ class CellSharkService: Service() {
             ftpClient.setFileType(FTP.BINARY_FILE_TYPE)
 
             //Enabling here will ensure no thread crashes due to list manipulation
-            Util.updateFTPConnection(true)
+            Util.updateFailedConnectionAttempts(true)
 
-            fileQueue.take(5).forEach { fileName ->
+            files.take(4).forEach { fileName ->
 
-                val filePath = File(appDataDir + File.separator + fileName)
+                val filePath = File(appDataDir + File.separator + fileName.name)
                 if(!filePath.exists()) { return@forEach }
 
                 try {
                     val fileLocation = FileInputStream(filePath.absolutePath)
-                    val result = ftpClient.appendFile("/CellShark/Data/$fileName", fileLocation)
+                    val result = ftpClient.appendFile("/CellShark/Data/${fileName.name}", fileLocation)
                     Log.i("csDebug", "reply Code: ${ftpClient.replyCode}")
                     if (result) { filePath.delete() }
                 } catch (e: java.lang.Exception) { e.printStackTrace() }
@@ -302,11 +310,15 @@ class CellSharkService: Service() {
             ftpClient.disconnect()
 
         } catch (e: Exception) {
-            Util.updateFTPConnection(false)
+            Util.updateFailedConnectionAttempts(false)
             e.printStackTrace()
             val logString = out.toString()
             Util.saveLogData("FTP Connection Attempt Response Log\n$logString")
             Util.saveLogData("FTP Crash Stack Trace\n${e.stackTraceToString()}")
+
+            files.take(4).forEach { file ->
+                doAsync { httpUpload(File(appDataDir + File.separator + file.name).absolutePath) }
+            }
         } finally {
             fileQueue.clear()
         }
@@ -315,7 +327,7 @@ class CellSharkService: Service() {
     }
 
 
-    private fun mergeFileData(excludeFileName: String) {
+    private fun mergeFileData() {
 
         /**
          * Function will merge previous files into one, to reduce the # of connection attempts to the
@@ -326,62 +338,60 @@ class CellSharkService: Service() {
          */
         val appDirectory = applicationContext.getExternalFilesDir(null)!!.absolutePath
         val records: MutableList<Array<String>> = mutableListOf()
+
         var totalSize = 0
-        val allFiles = File(appDirectory + File.separator + DATA_DIRECTORY_NAME).listFiles()
-        val files: MutableList<File>
-        fileQueue.add(excludeFileName)
+        val allFiles = File(appDirectory + File.separator + DATA_DIRECTORY_NAME).listFiles()!!
 
-        val fileLimit = 30
+        if (allFiles.size <= 1) return
 
-        if(allFiles != null) {
+        allFiles.sort()
+        allFiles.reverse()
 
-            allFiles.sort()
-            allFiles.reverse()
+        val files = if (allFiles.size > TOTAL_FILE_LIMIT) {
+            val temp = allFiles.toMutableList()
+            temp.subList(TOTAL_FILE_LIMIT+1, temp.size).clear()
+            allFiles.forEach { file -> if (!temp.contains(file)) file.delete() }
+            temp
+        } else allFiles.toMutableList()
 
-            files = if (allFiles.size > fileLimit) {
-                val temp = allFiles.toMutableList()
-                temp.subList(fileLimit, temp.size).clear()
-                allFiles.forEach { file -> if (!temp.contains(file)) file.delete() }
-                temp
-            } else allFiles.toMutableList()
+        var combinedFilesSize = 0
 
-            files.forEach { file ->
-                if(file.name != excludeFileName) {
-                    val fileSize = Integer.parseInt((file.length()/1024).toString())
-                    if(totalSize >= FILE_SIZE_LIMIT) {
-                        fileQueue.add(file.name)
-                        return@forEach
-                    }
-                    else if (fileSize < 300) {
-                        totalSize += fileSize
-                        val csvReader = CSVReader(FileReader(file))
-                        val data = csvReader.readAll()
-                        data.forEach {
-                            records.add(it)
-                        }
-                        file.delete()
-                    }
+        files.forEach { file ->
+            val fileSize = Integer.parseInt((file.length()/1024).toString())
+            if (fileSize >= FILE_SIZE_LIMIT) return@forEach
+            if(combinedFilesSize >= FILE_SIZE_LIMIT) {
+                fileQueue.add(file.name)
+                combinedFilesSize = 0
+                return@forEach
+            } else {
+                combinedFilesSize += fileSize
+                val csvReader = CSVReader(FileReader(file))
+                val data = csvReader.readAll()
+                data.forEach {
+                    records.add(it)
                 }
+                file.delete()
             }
-
-            val fileName = "${Util.getSerialNumber()}_" +
-                    SimpleDateFormat(DATE_FORMAT_FILE, Locale.getDefault()).format(Date()) + "_merged.csv"
-            val filePath = File(appDirectory + File.separator + DATA_DIRECTORY_NAME + File.separator + fileName)
-
-            val mFileWriter = FileWriter(filePath, false)
-            val csvWriter = CSVWriter(mFileWriter)
-
-            records.forEach {
-                csvWriter.writeNext(it)
-            }
-
-            csvWriter.close()
-            fileQueue.add(fileName)
-
         }
+
+        val fileName = "${Util.getSerialNumber()}_" +
+                SimpleDateFormat(DATE_FORMAT_FILE, Locale.getDefault()).format(Date()) + "_merged.csv"
+        val filePath = File(appDirectory + File.separator + DATA_DIRECTORY_NAME + File.separator + fileName)
+
+        val mFileWriter = FileWriter(filePath, false)
+        val csvWriter = CSVWriter(mFileWriter)
+
+        records.forEach {
+            csvWriter.writeNext(it)
+        }
+
+        csvWriter.close()
+        fileQueue.add(fileName)
+
+
     }
 
-    private  fun saveToFile(): String {
+    private  fun saveMetricsToCSV() {
         val appDirectory = applicationContext.getExternalFilesDir(null)!!.absolutePath
         val fileName = "${Util.getSerialNumber()}_" +
                 SimpleDateFormat(DATE_FORMAT_FILE, Locale.getDefault()).format(Date()) + ".csv"
@@ -401,11 +411,10 @@ class CellSharkService: Service() {
             e.printStackTrace()
         }
         Util.disOccupy()
-        return fileName
     }
 
     @SuppressLint("MissingPermission")
-    private fun processNetworkData(tm: TelephonyManager?, wm: WifiManager?) {
+    private fun processNetworkObjects(tm: TelephonyManager?, wm: WifiManager?) {
 
 
         if (logBothMetrics) {
