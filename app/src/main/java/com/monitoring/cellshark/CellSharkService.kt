@@ -15,17 +15,31 @@ import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
 import android.util.Log
 import android.widget.Toast
+import com.github.kittinunf.fuel.Fuel
+import com.github.kittinunf.fuel.core.FileDataPart
+import com.github.kittinunf.fuel.core.Method
+import com.github.kittinunf.fuel.core.awaitUnit
+import com.github.kittinunf.fuel.httpPost
 import com.opencsv.CSVReader
 import com.opencsv.CSVWriter
+import io.github.rybalkinsd.kohttp.dsl.httpPost
+import io.github.rybalkinsd.kohttp.ext.httpGet
 import kotlinx.coroutines.*
 import kotlinx.coroutines.Dispatchers.IO
 import org.apache.commons.net.PrintCommandListener
 import org.apache.commons.net.ftp.FTP
+import org.apache.http.client.HttpClient
+import org.apache.http.impl.client.DefaultHttpClient
+import org.jetbrains.anko.custom.async
+import org.jetbrains.anko.doAsync
 import java.io.*
 import java.lang.Runnable
+import java.net.HttpURLConnection
 import java.net.InetAddress
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.Result.*
 
 class CellSharkService: Service() {
 
@@ -137,7 +151,8 @@ class CellSharkService: Service() {
                         val size = File(appDirectory + File.separator + DATA_DIRECTORY_NAME).listFiles()!!.size
                         if (size > 1 ) mergeFileData(fileName)
                         else fileQueue.add(fileName)
-                        if (FTP_SERVER_ACCESS) upload()
+//                        httpPost()
+//                        if (FTP_SERVER_ACCESS) upload()
                     }
 
                 }
@@ -188,6 +203,58 @@ class CellSharkService: Service() {
         return if(isConnectedSSID(wm) && dataActivity == TelephonyManager.DATA_ACTIVITY_NONE) { WIFI_INT }
         else if (tm.isDataEnabled) { LTE_INT }
         else { "Offline" }
+    }
+
+    private fun httpPost() {
+
+        val appDirectory = applicationContext.getExternalFilesDir(null)!!.absolutePath
+        val appDataDir = File(appDirectory + File.separator + DATA_DIRECTORY_NAME ).absolutePath
+        val files = File(appDataDir).listFiles()!!
+
+
+
+        //VERSION 2
+
+        files.take(2).forEach { _file ->
+
+            doAsync { Log.d("CellShark_HTTP_POST", "Sending ${_file.name}")
+
+                val file = FileDataPart.from(_file.absolutePath, name="csFile")
+
+                Fuel.upload("http://cellshark.augmedix.com:1200/upload", Method.POST).add(file).timeout(10000).response { request, response, result ->
+
+                    if (response.statusCode / 100 == 2) File(appDataDir + File.separator + _file.name).delete()
+                    else Log.d("CellShark_HTTP_POST_Response", "\nRequest: $request \nResponse: $response\nResult: $result")
+
+                    Log.d("CellShark_HTTP_POST_Response", "\nRequest: $request \nResponse: $response\nResult: $result")
+
+                }
+            }
+//            Log.d("CellShark_HTTP_POST", "Sending ${_file.name}")
+//
+//            val file = FileDataPart.from(_file.absolutePath, name="csFile")
+//
+//            Fuel.upload("http://cellshark.augmedix.com:1200/upload", Method.POST).add(file).timeout(10000).response { request, response, result ->
+//
+//                if (response.statusCode / 100 == 2) File(appDataDir + File.separator + _file.name).delete()
+//                else Log.d("CellShark_HTTP_POST_Response", "\nRequest: $request \nResponse: $response\nResult: $result")
+//
+//                Log.d("CellShark_HTTP_POST_Response", "\nRequest: $request \nResponse: $response\nResult: $result")
+//
+//            }
+        }
+
+        //ORIGINAL CODE
+//        val file = FileDataPart.from(files[0].absolutePath, name="csFile")
+//
+//        Fuel.upload("http://cellshark.augmedix.com:1200/upload", Method.POST).add(file).timeout(10000).response { request, response, result ->
+//
+//            Log.d("CellShark_HTTP", "Request: $request \nResponse: $response\nResult: $result")
+//
+//        }
+
+
+
     }
 
     private fun upload() {
@@ -247,9 +314,6 @@ class CellSharkService: Service() {
         FTP_isUploading = false
     }
 
-    private fun uploadHTTP() {
-
-    }
 
     private fun mergeFileData(excludeFileName: String) {
 
@@ -284,7 +348,7 @@ class CellSharkService: Service() {
             files.forEach { file ->
                 if(file.name != excludeFileName) {
                     val fileSize = Integer.parseInt((file.length()/1024).toString())
-                    if(totalSize >= 300) {
+                    if(totalSize >= FILE_SIZE_LIMIT) {
                         fileQueue.add(file.name)
                         return@forEach
                     }

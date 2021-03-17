@@ -15,14 +15,14 @@ import java.util.*
 
 
 // FTP Globals
-var FTP_Timeout                     = 15000
-var FTP_KeepAliveTimeout: Long      = 30000
+var FTP_Timeout                = FTP_DEFAULT_TIMEOUT
+var FTP_KeepAliveTimeout: Long      = FTP_DEFAULT_KEEP_ALIVE
 var FTP_isUploading                 = false
 var FTP_SERVER_ACCESS               = true
 
 // Global variable to keep UI elements accurate
 var csRunning                       = false
-var listLimit                       = 30
+var listLimit                  = LIST_DEFAULT_SIZE
 var logBothMetrics                  = true
 
 

@@ -10,13 +10,14 @@ val axEndPoints = arrayOf("connectivitycheck.android.com", "echo.augmedix.com",
 const val DATA_DIRECTORY_NAME       = "Data"
 const val LOGS_DIRECTORY_NAME       = "Logs"
 const val APPLICATION_NAME          = "CellShark"
-const val LIST_DEFAULT_SIZE         = 10
+const val LIST_DEFAULT_SIZE         = 30
 const val FTP_DEFAULT_TIMEOUT       = 15000
 const val FTP_DEFAULT_KEEP_ALIVE= 30000.toLong()
 const val WIFI_INT                  = "WiFi"
 const val LTE_INT                   = "LTE"
 const val BATTERY_INFO              = "BatteryInfo"
 const val BATTERY_USAGE_RATE        = "BatteryRate"
+const val FILE_SIZE_LIMIT           = 50
 
 //Current
 const val PINGv2                    = "PINGv2"
